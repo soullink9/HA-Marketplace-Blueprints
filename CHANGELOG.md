@@ -28,6 +28,18 @@ All blueprints share one version number.
 - Added **Ignore Readings That Don't Match the Sun** (default on).
 - Overlapping runs are dropped quietly instead of logging a warning.
 
+### Humidity Automation
+
+- Fixed: "must stay high / normal for N minutes" only compared the reading at
+  the start and end of the wait. It now uses the triggers' own `for:`, so the
+  value has to stay there the whole time.
+- Fixed: every reading started its own delayed run; a sensor reporting every
+  few seconds hit the 10-run limit and filled the log with warnings.
+- Fixed: shower detection only compared two consecutive readings, so sensors
+  that report in small steps never registered a shower.
+- The fan now switches when humidity crosses into high / normal, instead of
+  being re-sent on every reading. A one-off check runs after a restart.
+
 ### Indoor Air Helper (HVAC)
 
 - Fixed: a restart in the middle of a boost left the fan on the boost speed
