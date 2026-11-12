@@ -1,0 +1,1168 @@
+# HA-Marketplace-Blueprints v0.1.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+blueprint:
+  name: Adaptive Light Controller
+  description: >
+    Controls one room's lights. Turns them on and off using presence
+    sensors (optional), a time/sun/lux schedule, and a check every 5
+    minutes that self-corrects if a real trigger was missed. When lights
+    turn on, brightness and color temperature follow the sun's position
+    (dim and warm near sunrise/sunset, bright and cool at midday). OFF is
+    guarded by an optional media-player pause, a minimum-darkness floor,
+    a do-not-turn-off time window, and manual-override protection that
+    backs off for a while after you change a light yourself, with no
+    helper entities required. You can also name specific entities (e.g.
+    an "in bed" occupancy sensor) that block auto-ON and/or auto-OFF
+    outright. Works with just the schedule (no presence sensor needed)
+    or fully reactive to presence, room by room. Only `light.*` entities
+    can be targeted — see the note on Section 1 for converting a plain
+    switch into a light entity.
+  domain: automation
+  source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/adaptive_light_controller/adaptive_light_controller.yaml
+
+  input:
+
+    section_1_target_lights:
+      name: "1 · Target Lights"
+      description: >
+        Which entities this automation controls. Everything in every
+        other section — presence, schedule, circadian dimming, guards,
+        override protection — acts on this target.
+      collapsed: false
+      input:
+        light_targets:
+          name: Lights to Control
+          description: >
+            The light(s), device, or area this automation controls.
+            Every ON/OFF decision below (presence, schedule,
+            self-healing in Section 10, all the guards in Sections 8-9)
+            applies to this target. Only `light.*` entities can be
+            picked, so each one can receive the circadian brightness/color from Section 7 on every automatic ON. If
+            you want to control a plain switch (e.g. a lamp on a smart
+            plug), first turn it into a light entity: Settings →
+            Devices & Services → Helpers → + Create Helper → "Switch as
+            X" → choose "Light." That gives you a `light.*` entity
+            backed by the switch, which you can then pick here — it
+            will just snap fully on/off since it can't dim, but
+            everything else (circadian target values, guards, override
+            protection) still applies to it normally.
+          selector:
+            target:
+              entity:
+                domain: light
+
+    section_2_presence:
+      name: "2 · Presence (optional)"
+      description: >
+        Leave this section's sensor list empty to skip presence entirely
+        and run purely on the Ambient Logic schedule (Sections 3–6) via Self-Healing (Section 10). Fill it in to make presence the
+        primary ON/OFF trigger, with the schedule and guards still
+        applying on top.
+      collapsed: false
+      input:
+        presence_sensors:
+          name: Presence Sensors (optional)
+          description: >
+            Occupancy/presence sensors for this room. Leave empty to skip
+            presence entirely and run on the Ambient Logic schedule (Sections 3–6) only — that's "self-healing mode," driven purely by Section 10's periodic check. If you set sensors
+            here, presence becomes the main ON/OFF trigger: "on" fires
+            an immediate ON (subject to the Ambient Logic decision in Sections 3–6 and the block entities in Section 9 still having to agree), and "off" starts the OFF Delay below (subject to all the OFF Guards in Section 8). The selector
+            is limited to binary_sensor entities whose device class is
+            "occupancy" or "presence" — if a sensor (e.g. a water leak
+            sensor) has been set up to report under one of those device
+            classes, it will show up here and work exactly the same as a
+            PIR sensor.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: binary_sensor
+              device_class:
+                - occupancy
+                - presence
+
+        presence_off_delay:
+          name: Presence OFF Delay (minutes)
+          description: >
+            How long every sensor in Presence Sensors above must stay
+            continuously clear before the lights are turned off. The
+            timer restarts each time any sensor reports presence again,
+            so a flickering sensor can't cause an early OFF. Once the
+            delay has fully elapsed, the OFF Guards in Section 8 and the
+            block entities in Section 9 still get the final say.
+          default: 1
+          selector:
+            number:
+              min: 1
+              max: 60
+              mode: slider
+              unit_of_measurement: minutes
+
+    section_3_time_window:
+      name: "3 · Time Window"
+      description: >
+        One of up to three "votes" — together with Sun Position (Section
+        4) and Lux (Section 5) — that combine via the Ambient Logic Preset (Section 6) into a single ON/OFF decision. That decision gates presence (Section 2) and drives the schedule/self-healing engine (Section 10).
+      collapsed: true
+      input:
+        time_window_enabled:
+          name: Use Time Window
+          description: >
+            When off, Time drops out of the Ambient Logic vote entirely
+            (as if this section didn't exist). When on, the window
+            between Time Window Start and Time Window End below defines
+            when "time favors ON" — outside it, "time favors OFF."
+          default: true
+          selector:
+            boolean: {}
+
+        on_time:
+          name: Time Window Start
+          description: >
+            Clock time each day when "time favors ON" begins. Only used
+            if "Use Time Window" above is on.
+          default: "18:00:00"
+          selector:
+            time: {}
+
+        off_time:
+          name: Time Window End
+          description: >
+            Clock time each day when "time favors OFF" begins (i.e.
+            where the ON window from Time Window Start ends). If
+            earlier than Time Window Start, the ON window wraps past
+            midnight (e.g. 18:00 to 06:00 = favors ON overnight). Only
+            used if "Use Time Window" above is on.
+          default: "23:00:00"
+          selector:
+            time: {}
+
+    section_4_sun_position:
+      name: "4 · Sun Position"
+      description: >
+        Another of the three Ambient Logic votes (see Section 3). Also
+        read independently by Circadian Brightness/Color in Section 7 for dimming — you can use one without the other.
+      collapsed: true
+      input:
+        solar_enabled:
+          name: Use Sun Position
+          description: >
+            When on, the sun's elevation counts as a vote in the Ambient Logic Preset (Section 6): dark outside wants ON, bright outside wants OFF. When off, Sun drops out
+            of that vote entirely.
+          default: true
+          selector:
+            boolean: {}
+
+        solar_elevation_threshold:
+          name: Sun Elevation Threshold
+          description: >
+            Sun angle, in degrees, below which it's dark enough to want
+            lights ON. Lower means darker is required. Only used if "Use
+            Sun Position" above is on.
+          default: -4
+          selector:
+            number:
+              min: -20
+              max: 10
+              step: 0.5
+
+    section_5_lux:
+      name: "5 · Brightness Sensor (Lux)"
+      description: >
+        The last of the three Ambient Logic votes (see Section 3). How
+        this and the other two votes combine into one decision is set
+        in Section 6, right after this one.
+      collapsed: true
+      input:
+        lux_enabled:
+          name: Use Brightness Sensor (Lux)
+          description: >
+            When on, a real brightness sensor becomes a vote in the Ambient Logic Preset (Section 6), instead of relying only on the clock or sun. Separate from Minimum Lux to Keep ON in Section 8, which is a hard safety floor rather than a vote.
+          default: false
+          selector:
+            boolean: {}
+
+        lux_sensor:
+          name: Brightness Sensor(s) (optional)
+          description: >
+            The room's brightness sensor. If more than one is picked,
+            the first is used. Only used if "Use Brightness Sensor"
+            above is on.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: sensor
+              device_class: illuminance
+
+        lux_on_threshold:
+          name: Lux ON Threshold
+          description: At or below this reading, brightness counts as wanting lights ON.
+          default: 50
+          selector:
+            number:
+              min: 0
+              max: 2000
+
+        lux_off_threshold:
+          name: Lux OFF Threshold
+          description: >
+            At or above this reading, brightness counts as wanting
+            lights OFF. Keep it higher than the ON threshold so one
+            value near the line doesn't cause flickering.
+          default: 80
+          selector:
+            number:
+              min: 0
+              max: 2000
+
+    section_6_ambient_logic:
+      name: "6 · Ambient Logic Preset"
+      description: >
+        The rule that combines the three votes above — Time (Section
+        3), Sun Position (Section 4), and Lux (Section 5) — into the
+        single ON/OFF decision that gates presence (Section 2) and
+        drives the schedule/self-healing engine (Section 10). Also
+        controls whether an ambient OFF may override presence.
+      collapsed: true
+      input:
+        preset_choice:
+          name: Ambient Logic Preset
+          description: >
+            How the enabled votes from Section 3 (Time), Section 4
+            (Sun), and Section 5 (Lux) combine into one ON/OFF decision.
+            A factor you've left disabled in its own section is skipped
+            entirely here, even if the preset name mentions it.
+            Examples, assuming Time, Sun, and Lux are all enabled:
+            "Time only" — turns ON at Time Window Start and OFF at Time
+            Window End, every day, regardless of what the sun or lux
+            sensor say (yes: it will turn on/off at your exact times
+            even in broad daylight or pitch dark, ignoring Sun/Lux
+            completely). "Sun only" — turns on/off purely by the sun's
+            elevation; your Time Window is ignored. "Lux only" — turns
+            on/off purely by the brightness sensor reading; both Time
+            and Sun are ignored (this is what you're using now).
+            "Sun AND Lux must both agree" — ON only when both the sun
+            angle and the lux reading say it's dark, OFF only when both
+            say it's bright; Time is ignored. "Time OR (Sun AND Lux)" —
+            ON if EITHER your Time Window says so, OR Sun and Lux both
+            agree it's dark; a good fallback setup, since the Time
+            Window still works even if the lux sensor drops offline. "OR —
+            any enabled factor agrees" is the most permissive: if ANY
+            single enabled factor (Time, Sun, or Lux alone) votes ON,
+            the light turns ON, and likewise for OFF — so with all
+            three enabled, whichever one changes state first will drive
+            the light, which can fight with the others if their windows
+            don't line up. This single decision both gates presence
+            (Section 2) and drives the schedule/self-healing behavior
+            (Section 10) — it does NOT touch the OFF Guards in Section 8
+            or the block entities in Section 9, which apply on top
+            regardless of preset.
+          default: "time_or_sun_and_lux"
+          selector:
+            select:
+              options:
+                - label: "OR — any enabled factor agrees"
+                  value: "or"
+                - label: "Sun AND Lux must both agree"
+                  value: "sun_and_lux"
+                - label: "Time OR (Sun AND Lux)"
+                  value: "time_or_sun_and_lux"
+                - label: "Time only"
+                  value: "time_only"
+                - label: "Lux only"
+                  value: "lux_only"
+                - label: "Sun only"
+                  value: "sun_only"
+
+        ambient_off_ignores_presence:
+          name: Ambient OFF Ignores Presence
+          description: >
+            Only matters if you picked Presence Sensors in Section 2.
+            When on, the moment the Ambient Logic Preset above says OFF
+            (for example, lux rises above the Lux OFF Threshold in the
+            morning), the lights turn off even if someone is still in
+            the room; it's applied instantly when the value crosses the
+            threshold and re-checked every 5 minutes by Self-Healing
+            (Section 10). When off, the lights only turn off once every
+            presence sensor has been clear for the full Presence OFF
+            Delay. Either way, the OFF Guards (Section 8) and block
+            entities / manual override (Section 9) can still veto it.
+            Heads-up: with a Time Window preset, turning this on means
+            lights go off at Time Window End even if the room is
+            occupied.
+          default: true
+          selector:
+            boolean: {}
+
+    section_7_circadian:
+      name: "7 · Circadian Brightness / Color"
+      description: >
+        Only affects `light.*` targets. Sets the brightness/color sent
+        on an automatic ON (Sections 2 and 10) AND smoothly adjusts
+        lights that are already on when quiet hours start/end and as the
+        sun moves (checked every 5 minutes by Self-Healing in Section
+        10). A switch turned into a light via the note in Section 1 will
+        just snap on/off since it can't dim.
+      collapsed: true
+      input:
+        use_circadian:
+          name: Use Circadian Brightness/Color
+          description: >
+            When on, every automatic ON call (from presence, the
+            schedule, or self-healing) sets brightness and color
+            temperature from the sun's elevation, capped during Quiet
+            Hours below. Lights that are ALREADY on are also adjusted:
+            at Quiet Hours Start and End, and on each 5-minute
+            Self-Healing check as the sun moves, they fade to the current
+            target over the Transition Time set at the bottom of this
+            section. Skipped while the Media Guard is active (Section 8)
+            or within the Manual Override window after a manual ON
+            (Section 9). A manual brightness tweak is NOT detected, so it
+            gets reset at the next adjustment. When off, ON calls just
+            turn lights on at their last level and nothing is adjusted.
+          default: true
+          selector:
+            boolean: {}
+
+        quiet_hours_start:
+          name: Quiet Hours Start
+          description: >
+            A separate, clock-based override — not tied to the sun.
+            From this time until Quiet Hours End, brightness and color
+            are forced to the Quiet Hours values below regardless of
+            actual sun position. Useful when sunrise is earlier than you
+            actually want brightness to ramp up (e.g. a 5am summer
+            sunrise while you're still asleep). Unrelated to the Time
+            Window in Section 3, which controls ON/OFF, not brightness.
+          default: "22:00:00"
+          selector:
+            time: {}
+
+        quiet_hours_end:
+          name: Quiet Hours End
+          description: End of the Quiet Hours override described above.
+          default: "06:00:00"
+          selector:
+            time: {}
+
+        day_brightness:
+          name: Daytime Brightness (%)
+          description: >
+            Brightness used when the sun is highest (solar noon / full
+            daylight). Fades smoothly toward Quiet Hours Brightness
+            below as the sun gets lower — driven by actual sun position,
+            not the clock.
+          default: 100
+          selector:
+            number:
+              min: 1
+              max: 100
+              mode: slider
+
+        quiet_hours_brightness:
+          name: Quiet Hours Brightness (%)
+          description: >
+            Brightness used once the sun is below the horizon, AND the
+            fixed value forced during the Quiet Hours window above,
+            overriding the sun-based fade even if the sun says it should
+            be brighter — the same value serves both roles since
+            they're really the same "dim and calm" setting.
+          default: 25
+          selector:
+            number:
+              min: 1
+              max: 100
+              mode: slider
+
+        day_kelvin:
+          name: Daytime Color Temperature (K)
+          description: >
+            Color temperature when the sun is highest — higher is
+            cooler/bluer. Fades toward Quiet Hours Color Temperature
+            below as the sun gets lower, same as Daytime Brightness
+            above.
+          default: 4500
+          selector:
+            number:
+              min: 2000
+              max: 6500
+              mode: slider
+
+        quiet_hours_kelvin:
+          name: Quiet Hours Color Temperature (K)
+          description: >
+            Color temperature once the sun is below the horizon, and
+            also forced during the Quiet Hours window above — lower is
+            warmer/dimmer-feeling.
+          default: 2200
+          selector:
+            number:
+              min: 2000
+              max: 6500
+              mode: slider
+
+        circadian_transition_seconds:
+          name: Transition Time (seconds)
+          description: >
+            How long lights that are already on take to fade to a new
+            circadian target (for example, dimming down when Quiet Hours
+            Start arrives). 0 = instant. Only used for adjusting lights
+            that are already on; a fresh automatic ON is not faded. Only
+            used if "Use Circadian Brightness/Color" above is on.
+          default: 30
+          selector:
+            number:
+              min: 0
+              max: 300
+              mode: slider
+              unit_of_measurement: seconds
+
+    section_8_off_guards:
+      name: "8 · OFF Guards"
+      description: >
+        Guards that can affect automatic control. The Media Guard below
+        blocks BOTH automatic ON and automatic OFF while media is
+        playing, so nothing touches the lights mid-movie. The other
+        guards here (Minimum Lux to Keep ON, OFF Block Window) only ever
+        veto an automatic OFF — they never block an ON.
+      collapsed: true
+      input:
+        enable_media_guard:
+          name: Enable Media Guard
+          description: >
+            When on, pauses ALL automatic control (ON and OFF, from
+            presence, the schedule, and self-healing alike) while a
+            selected media player is playing, so lights aren't touched
+            mid-movie. Independent of the block entities in Section 8.
+          default: false
+          selector:
+            boolean: {}
+
+        media_entities:
+          name: Media Player Entities
+          description: The media player(s) watched for the media guard above. Only used if enabled.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain: media_player
+
+        min_lux_keep_on:
+          name: Minimum Lux to Keep ON
+          description: >
+            Never turn lights OFF (from presence delay, the schedule,
+            self-healing, or the OFF Block Window end-check) if the room
+            is currently darker than this, regardless of presence or
+            schedule — a safety floor against going dark unexpectedly.
+            This is a hard floor, separate from the Lux ON/OFF
+            thresholds in Section 5, which are only a vote.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 2000
+
+        enable_off_block_window:
+          name: Enable OFF Block Window
+          description: >
+            When on, forbids automatic OFF during the time window below
+            (e.g. you never want lights auto-off in the evening) —
+            presence delay, schedule, and self-healing OFF are all
+            blocked. Distinct from the Time Window in Section 3, which
+            only decides when time "favors" ON/OFF, not a hard block.
+          default: false
+          selector:
+            boolean: {}
+
+        off_block_start:
+          name: OFF Block Window Start
+          description: Start of the window during which automatic OFF is blocked. Only used if enabled above.
+          default: "00:00:00"
+          selector:
+            time: {}
+
+        off_block_end:
+          name: OFF Block Window End
+          description: >
+            End of the block window. The instant this time hits, the automation immediately checks presence/guards and turns OFF if clear. If that one check is itself blocked by something (media playing, manual override, a block entity, etc.) it won't retry on its own — Self-Healing in Section 10 is what keeps retrying every 5 minutes after that until it succeeds.
+          default: "00:00:00"
+          selector:
+            time: {}
+
+    section_9_manual_override:
+      name: "9 · Manual Override & Block Entities"
+      description: >
+        Two independent ways to keep this automation from fighting you:
+        detecting a manual change to the lights themselves, or naming
+        outside entities that veto auto-ON/auto-OFF outright (e.g. an
+        "in bed" sensor).
+      collapsed: true
+      input:
+        enable_manual_override_protection:
+          name: Enable Manual Override Protection
+          description: >
+            When on, a manual change to a light in Section 1 (physical
+            switch, app, voice) makes the automation back off for a
+            while instead of immediately undoing it. Reads the target's
+            own state history — no helper entities needed. This is
+            separate from, and additive with, the Block Entities below:
+            either one can veto an automatic ON/OFF on its own.
+          default: false
+          selector:
+            boolean: {}
+
+        override_direction:
+          name: Override Protection Direction
+          description: >
+            Which manual changes get protected: a manual ON blocking the
+            next auto-OFF, a manual OFF blocking the next auto-ON, or
+            both. Only applies to the light history detection above —
+            the Block Entities below always act in both directions
+            independently, per list.
+          default: "both"
+          selector:
+            select:
+              options:
+                - label: "Both directions"
+                  value: "both"
+                - label: "Manual ON blocks auto-OFF only"
+                  value: "block_off_after_manual_on"
+                - label: "Manual OFF blocks auto-ON only"
+                  value: "block_on_after_manual_off"
+
+        override_duration_minutes:
+          name: Override Protection Duration (minutes)
+          description: >
+            How long a manual change is respected before the automation
+            resumes normal control, measured from when you made the
+            change. Only applies to the light history detection above,
+            not the Block Entities below (those block for as long as
+            their own state is "on").
+          default: 15
+          selector:
+            number:
+              min: 1
+              max: 180
+              mode: slider
+              unit_of_measurement: minutes
+
+        block_auto_on_entities:
+          name: Entities That Block Auto-ON (optional)
+          description: >
+            Optional list of entities that, while in the "on" state,
+            prevent this automation from turning the lights ON
+            automatically — whether the attempted ON came from presence
+            (Section 2), the schedule/self-healing (Section 10), or a
+            Quiet Hours re-trigger. Manual ON via switch/app/voice is
+            unaffected. Example: point this at a bedroom "in bed"
+            occupancy sensor so motion at the door doesn't turn the
+            lights on once you're asleep. Works independently of the
+            Enable Manual Override Protection toggle above — populate
+            this list and it's active, regardless of that setting. Leave
+            empty to disable.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain:
+                - binary_sensor
+                - input_boolean
+
+        block_auto_off_entities:
+          name: Entities That Block Auto-OFF (optional)
+          description: >
+            Optional list of entities that, while "on", prevent this
+            automation from turning the lights OFF automatically —
+            presence delay, schedule/self-healing, and the OFF Block Window end-check (Section 8) all respect this. Manual OFF is unaffected. Works independently of the Enable Manual Override Protection toggle above. Leave empty to disable.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              domain:
+                - binary_sensor
+                - input_boolean
+
+    section_10_self_healing:
+      name: "10 · Self-Healing / Schedule"
+      description: >
+        Governs when the Ambient Logic Preset decision (Sections 3–6) gets applied on a schedule, and which days this automation runs at all.
+      collapsed: false
+      input:
+        self_healing_enabled:
+          name: Self-Healing (check every 5 minutes)
+          description: >
+            Every 5 minutes, re-applies the Ambient Logic Preset
+            decision from Sections 3–6, and (if Circadian is on) fades
+            lights that are already on toward the current target. With
+            no Presence Sensors configured (Section 2), this is the ONLY
+            thing driving the lights. With presence sensors, an ambient
+            OFF is applied regardless of presence if "Ambient OFF Ignores
+            Presence" (Section 6) is on; otherwise it waits until the
+            room has been clear for the full Presence OFF Delay. This is
+            also the backstop for the OFF Block Window in Section 8: if
+            the check at the end of that window is blocked by something
+            else at that exact moment, this keeps retrying every 5
+            minutes until it can turn off. Recommended to leave on.
+          default: true
+          selector:
+            boolean: {}
+
+        active_days:
+          name: Active Days
+          description: >
+            This automation only runs on the days checked here —
+            presence control, the schedule, and self-healing all
+            included. Uncheck a day to fully disable it that day.
+          selector:
+            select:
+              multiple: true
+              options:
+                - Sunday
+                - Monday
+                - Tuesday
+                - Wednesday
+                - Thursday
+                - Friday
+                - Saturday
+          default:
+            - Sunday
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+
+    section_11_debugging:
+      name: "11 · Debugging"
+      description: >
+        Diagnostic logging only — has no effect on ON/OFF behavior.
+      collapsed: true
+      input:
+        debug_logging:
+          name: Debug Logging
+          description: >
+            When on, writes one diagnostic log line per trigger showing
+            every input factor from Sections 2–10 and the decision made.
+            Useful for troubleshooting; noisy otherwise, so leave off
+            normally.
+          default: false
+          selector:
+            boolean: {}
+
+###############################################################################
+# TRIGGERS
+###############################################################################
+triggers:
+  - trigger: state
+    entity_id: !input presence_sensors
+    to: "on"
+    id: presence_on
+
+  - trigger: state
+    entity_id: !input presence_sensors
+    to: "off"
+    for:
+      minutes: !input presence_off_delay
+    id: presence_off_candidate
+
+  - trigger: numeric_state
+    entity_id: sun.sun
+    attribute: elevation
+    below: !input solar_elevation_threshold
+    enabled: !input solar_enabled
+    id: ambient_recompute
+
+  - trigger: numeric_state
+    entity_id: sun.sun
+    attribute: elevation
+    above: !input solar_elevation_threshold
+    enabled: !input solar_enabled
+    id: ambient_recompute
+
+  - trigger: numeric_state
+    entity_id: !input lux_sensor
+    below: !input lux_on_threshold
+    enabled: !input lux_enabled
+    id: ambient_recompute
+
+  - trigger: numeric_state
+    entity_id: !input lux_sensor
+    above: !input lux_off_threshold
+    enabled: !input lux_enabled
+    id: ambient_recompute
+
+  - trigger: time
+    at: !input on_time
+    enabled: !input time_window_enabled
+    id: ambient_recompute
+
+  - trigger: time
+    at: !input off_time
+    enabled: !input time_window_enabled
+    id: ambient_recompute
+
+  - trigger: time
+    at: !input quiet_hours_start
+    enabled: !input use_circadian
+    id: ambient_recompute
+
+  - trigger: time
+    at: !input quiet_hours_end
+    enabled: !input use_circadian
+    id: ambient_recompute
+
+  - trigger: time_pattern
+    minutes: "/5"
+    enabled: !input self_healing_enabled
+    id: self_healing
+
+  - trigger: time
+    at: !input off_block_end
+    enabled: !input enable_off_block_window
+    id: off_block_window_end
+
+###############################################################################
+# CONDITIONS (apply to every trigger)
+###############################################################################
+conditions:
+  - condition: template
+    value_template: >
+      {% set today = now().strftime('%A').lower() %}
+      {% set days = active_days_var | map('lower') | list %}
+      {{ today in days }}
+
+###############################################################################
+# VARIABLES
+###############################################################################
+variables:
+
+  light_targets: !input light_targets
+  active_days_var: !input active_days
+  self_healing_enabled_var: !input self_healing_enabled
+  debug_logging: !input debug_logging
+
+  presence_sensors_var: !input presence_sensors
+  presence_off_delay_var: !input presence_off_delay
+
+  time_window_enabled: !input time_window_enabled
+  on_time: !input on_time
+  off_time: !input off_time
+  on_str: "{{ on_time ~ ':00' if (on_time | length == 5) else on_time }}"
+  off_str: "{{ off_time ~ ':00' if (off_time | length == 5) else off_time }}"
+
+  solar_enabled: !input solar_enabled
+  solar_threshold: !input solar_elevation_threshold
+
+  lux_enabled: !input lux_enabled
+  lux_sensor_list: !input lux_sensor
+  lux_sensor: "{{ (lux_sensor_list | first) if lux_sensor_list else none }}"
+  lux_on_threshold: !input lux_on_threshold
+  lux_off_threshold: !input lux_off_threshold
+
+  preset_choice: !input preset_choice
+
+  use_circadian: !input use_circadian
+  quiet_hours_start: !input quiet_hours_start
+  quiet_hours_end: !input quiet_hours_end
+  day_brightness: !input day_brightness
+  quiet_hours_brightness: !input quiet_hours_brightness
+  day_kelvin: !input day_kelvin
+  quiet_hours_kelvin: !input quiet_hours_kelvin
+  circadian_transition_seconds: !input circadian_transition_seconds
+  ambient_off_ignores_presence_var: !input ambient_off_ignores_presence
+
+  enable_media_guard_var: !input enable_media_guard
+  media_entities_var: !input media_entities
+  min_lux_keep_on_var: !input min_lux_keep_on
+  enable_off_block_window_var: !input enable_off_block_window
+  off_block_start_var: !input off_block_start
+  off_block_end_var: !input off_block_end
+
+  enable_manual_override_var: !input enable_manual_override_protection
+  override_direction_var: !input override_direction
+  override_duration_minutes_var: !input override_duration_minutes
+  block_auto_on_entities_var: !input block_auto_on_entities
+  block_auto_off_entities_var: !input block_auto_off_entities
+
+  now_str: "{{ now().strftime('%H:%M:%S') }}"
+
+  # ---------------------------------------------------------------------------
+  # LIGHT ID EXTRACTION — expands entity_id/device_id/area_id from the
+  # target selector into a flat list of light.* entities.
+  # ---------------------------------------------------------------------------
+  light_ids: >
+    {% set t = light_targets %}
+    {% set raw_entities = (t.entity_id if t is mapping and t.entity_id is defined else []) %}
+    {% set raw_entities = [raw_entities] if raw_entities is string else raw_entities %}
+    {% set raw_devices = (t.device_id if t is mapping and t.device_id is defined else []) %}
+    {% set raw_devices = [raw_devices] if raw_devices is string else raw_devices %}
+    {% set raw_areas = (t.area_id if t is mapping and t.area_id is defined else []) %}
+    {% set raw_areas = [raw_areas] if raw_areas is string else raw_areas %}
+    {% set from_devices = raw_devices | map('device_entities') | sum(start=[]) %}
+    {% set from_areas = raw_areas | map('area_entities') | sum(start=[]) %}
+    {% set all_ids = (raw_entities + from_devices + from_areas) | unique | list %}
+    {% set ns = namespace(lights=[]) %}
+    {% for eid in all_ids %}
+      {% if eid.split('.')[0] == 'light' %}
+        {% set ns.lights = ns.lights + [eid] %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.lights }}
+
+  any_on: "{{ light_ids | select('is_state', 'on') | list | count > 0 }}"
+  all_off: "{{ light_ids | select('is_state', 'on') | list | count == 0 }}"
+
+  # ---------------------------------------------------------------------------
+  # AMBIENT PRESET ENGINE
+  # ---------------------------------------------------------------------------
+  sun_elev: >
+    {% set e = state_attr('sun.sun', 'elevation') %}
+    {{ e if e is not none else -90 }}
+
+  lux_value: >
+    {% if lux_enabled and lux_sensor and states(lux_sensor) not in ['unknown','unavailable','none',''] %}
+      {{ states(lux_sensor) | float(0) }}
+    {% else %}
+      99999
+    {% endif %}
+
+  time_window_active: >
+    {% set now_t = strptime(now_str, '%H:%M:%S').time() %}
+    {% set on_t = strptime(on_str, '%H:%M:%S').time() %}
+    {% set off_t = strptime(off_str, '%H:%M:%S').time() %}
+    {% if not time_window_enabled %}
+      false
+    {% elif on_t < off_t %}
+      {{ now_t >= on_t and now_t < off_t }}
+    {% else %}
+      {{ now_t >= on_t or now_t < off_t }}
+    {% endif %}
+
+  time_wants_on: "{{ time_window_active | bool }}"
+  time_wants_off: "{{ time_window_enabled and not (time_window_active | bool) }}"
+  sun_wants_on: "{{ sun_elev <= solar_threshold if solar_enabled else false }}"
+  sun_wants_off: "{{ sun_elev > solar_threshold if solar_enabled else false }}"
+  lux_wants_on: "{{ lux_value <= lux_on_threshold if lux_enabled else false }}"
+  lux_wants_off: "{{ lux_value >= lux_off_threshold if lux_enabled else false }}"
+
+  preset_on: >
+    {% set p = preset_choice if preset_choice != 'auto' else 'time_or_sun_and_lux' %}
+    {{ (
+      (p == 'time_only' and time_wants_on) or
+      (p == 'lux_only' and lux_wants_on) or
+      (p == 'sun_only' and sun_wants_on) or
+      (p == 'or' and (time_wants_on or lux_wants_on or sun_wants_on)) or
+      (p == 'sun_and_lux' and (sun_wants_on and lux_wants_on)) or
+      (p == 'time_or_sun_and_lux' and (time_wants_on or (sun_wants_on and lux_wants_on)))
+    ) | bool }}
+
+  preset_off: >
+    {% set p = preset_choice if preset_choice != 'auto' else 'time_or_sun_and_lux' %}
+    {{ (
+      (p == 'time_only' and time_wants_off) or
+      (p == 'lux_only' and lux_wants_off) or
+      (p == 'sun_only' and sun_wants_off) or
+      (p == 'or' and (time_wants_off or lux_wants_off or sun_wants_off)) or
+      (p == 'sun_and_lux' and (sun_wants_off and lux_wants_off)) or
+      (p == 'time_or_sun_and_lux' and (time_wants_off or (sun_wants_off and lux_wants_off)))
+    ) | bool }}
+
+  # ---------------------------------------------------------------------------
+  # CIRCADIAN BRIGHTNESS / COLOR
+  # ---------------------------------------------------------------------------
+  day_fraction: "{{ [[sun_elev / 20, 1] | min, 0] | max }}"
+  in_quiet_hours: >
+    {{ (now_str >= quiet_hours_start or now_str < quiet_hours_end)
+       if quiet_hours_start > quiet_hours_end else
+       (now_str >= quiet_hours_start and now_str < quiet_hours_end) }}
+  target_brightness_pct: >
+    {% set raw = quiet_hours_brightness + (day_brightness - quiet_hours_brightness) * day_fraction %}
+    {{ [raw, quiet_hours_brightness] | min if in_quiet_hours else raw }}
+  target_kelvin: "{{ (quiet_hours_kelvin + (day_kelvin - quiet_hours_kelvin) * day_fraction) | round(0) }}"
+
+  # Lights that are ON but not yet at the current circadian target (brightness
+  # off by more than 3 %, or color temperature off by more than 100 K). Lights
+  # already close to target are left alone so we don't spam the bulbs.
+  lights_needing_circadian_update: >
+    {% set ns = namespace(out=[]) %}
+    {% set tb = target_brightness_pct | float(0) %}
+    {% set tk = target_kelvin | float(0) %}
+    {% for eid in light_ids %}
+      {% if is_state(eid, 'on') %}
+        {% set b = state_attr(eid, 'brightness') %}
+        {% set k = state_attr(eid, 'color_temp_kelvin') %}
+        {% set b_off = b is number and ((b / 255 * 100) - tb) | abs > 3 %}
+        {% set k_off = k is number and (k - tk) | abs > 100 %}
+        {% if b_off or k_off %}
+          {% set ns.out = ns.out + [eid] %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.out }}
+
+  # ---------------------------------------------------------------------------
+  # PRESENCE STATE
+  # ---------------------------------------------------------------------------
+  presence_configured: "{{ presence_sensors_var | length > 0 }}"
+  presence_active: >
+    {{ presence_configured and
+       (expand(presence_sensors_var) | selectattr('state','eq','on') | list | length > 0) }}
+  presence_off_and_delay_elapsed: >
+    {% if not presence_configured %}
+      true
+    {% else %}
+      {% set ns = namespace(all_clear=true) %}
+      {% for eid in presence_sensors_var %}
+        {% set st = states[eid] %}
+        {% if not st or st.state != 'off' or (now() - st.last_changed).total_seconds() < ((presence_off_delay_var * 60) - 1) %}
+          {% set ns.all_clear = false %}
+        {% endif %}
+      {% endfor %}
+      {{ ns.all_clear }}
+    {% endif %}
+
+  media_playing: >
+    {{ enable_media_guard_var and
+       (expand(media_entities_var) | selectattr('state','eq','playing') | list | length > 0) }}
+
+  off_block_active: >
+    {% set start = off_block_start_var %}
+    {% set end = off_block_end_var %}
+    {% if start <= end %}
+      {{ enable_off_block_window_var and (start <= now_str <= end) }}
+    {% else %}
+      {{ enable_off_block_window_var and (now_str >= start or now_str <= end) }}
+    {% endif %}
+
+  lux_keep_on_active: >
+    {% set lv = (states(lux_sensor) | float(999999)) if lux_sensor else 999999 %}
+    {{ lv < min_lux_keep_on_var }}
+
+  # ---------------------------------------------------------------------------
+  # MANUAL OVERRIDE PROTECTION — no helpers. Reads each light's own live
+  # context/last_changed. A change looks "manual" if a person did it
+  # (context.user_id set) or has no automation parent context at all
+  # (typical of a physical switch). Known HA quirk: a light changed by a
+  # time-triggered automation can occasionally also show a blank parent
+  # context — rare, low-stakes (worst case: one extra skipped ON/OFF).
+  # ---------------------------------------------------------------------------
+  any_manual_on_var: >
+    {% set ns = namespace(found=false) %}
+    {% for eid in light_ids %}
+      {% set st = states[eid] %}
+      {% if st and st.state == 'on' %}
+        {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+        {% set age = (now() - st.last_changed).total_seconds() %}
+        {% if is_manual and age < (override_duration_minutes_var * 60) %}
+          {% set ns.found = true %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.found }}
+
+  any_manual_off_var: >
+    {% set ns = namespace(found=false) %}
+    {% for eid in light_ids %}
+      {% set st = states[eid] %}
+      {% if st and st.state == 'off' %}
+        {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+        {% set age = (now() - st.last_changed).total_seconds() %}
+        {% if is_manual and age < (override_duration_minutes_var * 60) %}
+          {% set ns.found = true %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.found }}
+
+  history_blocks_on_var: >-
+    {{ enable_manual_override_var
+       and any_manual_off_var
+       and override_direction_var in ['both','block_on_after_manual_off'] }}
+
+  history_blocks_off_var: >-
+    {{ enable_manual_override_var
+       and any_manual_on_var
+       and override_direction_var in ['both','block_off_after_manual_on'] }}
+
+  # ---------------------------------------------------------------------------
+  # BLOCK ENTITIES — independent of the toggle above; active whenever the
+  # respective list is non-empty and any listed entity is currently "on".
+  # ---------------------------------------------------------------------------
+  block_entities_block_on_var: >-
+    {{ block_auto_on_entities_var | length > 0
+       and (expand(block_auto_on_entities_var) | selectattr('state','eq','on') | list | length > 0) }}
+
+  block_entities_block_off_var: >-
+    {{ block_auto_off_entities_var | length > 0
+       and (expand(block_auto_off_entities_var) | selectattr('state','eq','on') | list | length > 0) }}
+
+  manual_override_blocks_on_var: "{{ history_blocks_on_var or block_entities_block_on_var }}"
+  manual_override_blocks_off_var: "{{ history_blocks_off_var or block_entities_block_off_var }}"
+
+###############################################################################
+# ACTIONS
+###############################################################################
+actions:
+
+  - if:
+      - condition: template
+        value_template: "{{ debug_logging }}"
+    then:
+      - action: system_log.write
+        data:
+          level: info
+          message: >
+            [Adaptive Light Controller]
+            trigger_id={{ trigger.id if trigger.id is defined else 'none' }}
+            light_ids={{ light_ids }} any_on={{ any_on }} all_off={{ all_off }}
+            preset_on={{ preset_on }} preset_off={{ preset_off }}
+            presence_configured={{ presence_configured }} presence_active={{ presence_active }}
+            presence_off_and_delay_elapsed={{ presence_off_and_delay_elapsed }} ambient_off_ignores_presence={{ ambient_off_ignores_presence_var }}
+            media_playing={{ media_playing }} off_block_active={{ off_block_active }}
+            lux_keep_on_active={{ lux_keep_on_active }}
+            history_blocks_on={{ history_blocks_on_var }} history_blocks_off={{ history_blocks_off_var }}
+            block_entities_block_on={{ block_entities_block_on_var }} block_entities_block_off={{ block_entities_block_off_var }}
+            target_brightness_pct={{ target_brightness_pct }} target_kelvin={{ target_kelvin }}
+            circadian_update_needed={{ lights_needing_circadian_update }}
+
+  - choose:
+
+      # ---- Presence ON ----
+      - conditions:
+          - condition: trigger
+            id: presence_on
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ media_playing or manual_override_blocks_on_var or not (preset_on | bool) }}"
+            then:
+              - stop: Blocked by media guard, manual override / block entity, or ambient conditions.
+          - if:
+              - condition: template
+                value_template: "{{ any_on | bool }}"
+            then:
+              - stop: Already on - circadian updates for lights that are on are handled by the recompute/self-healing path.
+          - if:
+              - condition: template
+                value_template: "{{ use_circadian }}"
+            then:
+              - action: light.turn_on
+                target: !input light_targets
+                data:
+                  brightness_pct: "{{ target_brightness_pct | round(0) | int }}"
+                  color_temp_kelvin: "{{ target_kelvin | int }}"
+            else:
+              - action: light.turn_on
+                target: !input light_targets
+
+      # ---- Presence OFF (fires only after every sensor stayed clear for the full delay) ----
+      # The delay lives in the trigger itself (state trigger with "for"), so Home
+      # Assistant cancels the timer if a sensor reports presence again before it
+      # ends. No long-running delayed runs, and no early OFF from a brief blip.
+      - conditions:
+          - condition: trigger
+            id: presence_off_candidate
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ not (presence_off_and_delay_elapsed | bool) }}"
+            then:
+              - stop: Another presence sensor is still active or has not been clear long enough.
+          - if:
+              - condition: template
+                value_template: "{{ media_playing or off_block_active or manual_override_blocks_off_var }}"
+            then:
+              - stop: Blocked by media guard, off-block window, manual override, or block entity.
+          - if:
+              - condition: template
+                value_template: "{{ lux_keep_on_active }}"
+            then:
+              - stop: Too dark to turn off (min-lux-keep-on guard).
+          - action: light.turn_off
+            target: !input light_targets
+
+      # ---- OFF block window just ended: re-evaluate immediately ----
+      - conditions:
+          - condition: trigger
+            id: off_block_window_end
+        sequence:
+          - if:
+              - condition: template
+                value_template: >
+                  {{ not enable_off_block_window_var or media_playing or manual_override_blocks_off_var
+                     or lux_keep_on_active
+                     or (expand(presence_sensors_var) | selectattr('state','eq','on') | list | length > 0) }}
+            then:
+              - stop: Nothing to do at end of off-block window.
+          - action: light.turn_off
+            target: !input light_targets
+
+      # ---- Ambient recompute: schedule-only control, or self-healing safety net ----
+      # NOTE: a list of conditions here is ANDed by Home Assistant, not ORed.
+      # A single trigger can't have two different IDs, so listing both
+      # separately made this branch impossible to reach. Using one
+      # condition with a list of IDs matches either trigger correctly.
+      - conditions:
+          - condition: trigger
+            id:
+              - ambient_recompute
+              - self_healing
+        sequence:
+          - variables:
+              should_force_on: >-
+                {{ (preset_on | bool) and (all_off | bool)
+                   and (not presence_configured or presence_active)
+                   and not manual_override_blocks_on_var
+                   and not media_playing }}
+              should_force_off: >-
+                {{ (preset_off | bool) and (any_on | bool)
+                   and (not presence_configured or ambient_off_ignores_presence_var or presence_off_and_delay_elapsed)
+                   and not manual_override_blocks_off_var
+                   and not media_playing and not off_block_active and not lux_keep_on_active }}
+              should_refresh_circadian: >-
+                {{ (use_circadian | bool)
+                   and (lights_needing_circadian_update | length > 0)
+                   and not media_playing
+                   and not (history_blocks_off_var | bool) }}
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ should_force_on }}"
+                sequence:
+                  - if:
+                      - condition: template
+                        value_template: "{{ use_circadian }}"
+                    then:
+                      - action: light.turn_on
+                        target: !input light_targets
+                        data:
+                          brightness_pct: "{{ target_brightness_pct | round(0) | int }}"
+                          color_temp_kelvin: "{{ target_kelvin | int }}"
+                    else:
+                      - action: light.turn_on
+                        target: !input light_targets
+              - conditions:
+                  - condition: template
+                    value_template: "{{ should_force_off }}"
+                sequence:
+                  - action: light.turn_off
+                    target: !input light_targets
+              # Lights are staying on: fade only the lights that are on toward the
+              # current circadian target (quiet hours / sun position).
+              - conditions:
+                  - condition: template
+                    value_template: "{{ should_refresh_circadian }}"
+                sequence:
+                  - action: light.turn_on
+                    target:
+                      entity_id: "{{ lights_needing_circadian_update }}"
+                    data:
+                      brightness_pct: "{{ target_brightness_pct | round(0) | int }}"
+                      color_temp_kelvin: "{{ target_kelvin | int }}"
+                      transition: "{{ circadian_transition_seconds | int }}"
+
+    default: []
+
+mode: parallel
+max: 15

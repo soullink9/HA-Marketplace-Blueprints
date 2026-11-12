@@ -1,0 +1,661 @@
+# HA-Marketplace-Blueprints v0.1.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+blueprint:
+  name: Humidity Automation (Fan Control + Shower Detection)
+  description: >
+    Smart bathroom fan control for everyday users. Turns the fan on when
+    humidity gets high or rises quickly (shower), and turns it off again
+    when the room dries out. Optionally compares against an ambient
+    (whole-house) humidity sensor so humid days don't turn the fan on.
+    Includes simple explanations for every option, and optional
+    manual-override protection with no helper entities required.
+  domain: automation
+  source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/humidity_control/humidity_control.yaml
+
+  input:
+
+    ############################################################################
+    # SECTION 1 — SENSOR
+    ############################################################################
+    humidity_sensor:
+      name: Humidity Sensor
+      description: >
+        Select the humidity sensor for this room. The automation reacts to
+        every change in this sensor's value. Readings that are unavailable
+        or unknown are ignored.
+      selector:
+        entity:
+          domain: sensor
+
+    deadband:
+      name: Buffer Zone (Deadband) (%)
+      description: >
+        Prevents rapid on/off cycling. Example: If high threshold is 60%
+        and deadband is 2%, the fan won't turn off until humidity drops
+        below 58%.
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 20
+          step: 0.5
+
+    ############################################################################
+    # SECTION 2 — HIGH HUMIDITY (FAN)
+    ############################################################################
+    enable_high:
+      name: Turn Fan On When Humidity Gets High
+      description: >
+        Enable this if you want the fan to turn on when humidity rises
+        above the high threshold.
+      default: false
+      selector:
+        boolean: {}
+
+    high_threshold:
+      name: High Humidity Level (%)
+      description: >
+        When humidity rises above this value, the fan will turn on after
+        the required duration.
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 100
+
+    high_duration:
+      name: How Long Humidity Must Stay High (minutes)
+      description: >
+        Prevents false triggers. Humidity must stay above the high threshold
+        for this long before the fan turns on.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 120
+
+    high_action:
+      name: What To Do When Humidity Gets High
+      description: >
+        Actions to run when humidity stays above the high threshold long
+        enough. Usually: turn on the fan.
+      default: []
+      selector:
+        action: {}
+
+    high_normal_duration:
+      name: How Long Humidity Must Stay Normal Before Turning Off (minutes)
+      description: >
+        After humidity drops below the exit threshold, wait this long before
+        turning the fan off.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 120
+
+    high_normal_action:
+      name: What To Do When Humidity Returns to Normal
+      description: >
+        Actions to run when humidity drops back to normal. Usually: turn off
+        the fan.
+      default: []
+      selector:
+        action: {}
+
+    ############################################################################
+    # SECTION 2B — AMBIENT HUMIDITY BLOCKER (optional)
+    ############################################################################
+    ambient_sensor:
+      name: "Ambient Humidity Sensor (optional)"
+      description: >
+        A humidity sensor somewhere else INSIDE the house (hallway,
+        bedroom, or your thermostat). When set, the high-humidity fan only
+        turns on if this room is noticeably more humid than the rest of the
+        house — so a muggy day won't turn the fan on. Avoid outdoor
+        sensors: cold outdoor air reads high % but holds little moisture.
+        Select exactly one entity. Leave empty to disable the blocker. If
+        this sensor goes unavailable, the blocker is skipped and normal
+        threshold behavior is used.
+      default: []
+      selector:
+        entity:
+          domain: sensor
+          multiple: true
+
+    ambient_min_difference:
+      name: "Ambient Blocker: Required Difference (%)"
+      description: >
+        How much more humid this room must be than the ambient sensor
+        before the fan turns on. Example: ambient 62%, difference 10% —
+        the fan won't turn on unless this room reaches 72% (and is above
+        the High Humidity Level). The fan also turns off once the room
+        falls back within (difference − deadband) of ambient, so it can't
+        get stuck running all day when the whole house is humid. Shower
+        detection is not affected by this blocker.
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 50
+          step: 0.5
+
+    ############################################################################
+    # SECTION 3 — LOW HUMIDITY (E.G. HUMIDIFIER)
+    ############################################################################
+    enable_low:
+      name: Turn Something On When Humidity Gets Too Low
+      description: >
+        Enable this if you want to run actions when humidity drops below
+        the low threshold (e.g., humidifier control).
+      default: false
+      selector:
+        boolean: {}
+
+    low_threshold:
+      name: Low Humidity Level (%)
+      description: >
+        When humidity drops below this value, the low-humidity action will
+        run after the required duration.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 100
+
+    low_duration:
+      name: How Long Humidity Must Stay Low (minutes)
+      description: >
+        Prevents false triggers. Humidity must stay below the low threshold
+        for this long before actions run.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 120
+
+    low_action:
+      name: What To Do When Humidity Gets Too Low
+      description: >
+        Actions to run when humidity stays below the low threshold long
+        enough. Usually: turn on a humidifier.
+      default: []
+      selector:
+        action: {}
+
+    low_normal_duration:
+      name: How Long Humidity Must Stay Normal Before Turning Off (minutes)
+      description: >
+        After humidity rises above the exit threshold, wait this long before
+        turning off the low-humidity action.
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 120
+
+    low_normal_action:
+      name: What To Do When Humidity Returns to Normal
+      description: >
+        Actions to run when humidity returns to normal after being too low.
+      default: []
+      selector:
+        action: {}
+
+    ############################################################################
+    # SECTION 4 — SHOWER DETECTION
+    ############################################################################
+    enable_shower:
+      name: Detect Showers Automatically (Fast Humidity Rise)
+      description: >
+        Detects showers by looking for a rapid rise in humidity over a short
+        time window. Useful when high humidity alone isn't enough. This runs
+        independently of the high-humidity branch above, so it won't get
+        starved out if both happen to become true on the same reading.
+      default: false
+      selector:
+        boolean: {}
+
+    shower_rise_amount:
+      name: How Much Humidity Must Rise (%)
+      description: >
+        The minimum increase in humidity needed to count as a shower.
+      default: 8
+      selector:
+        number:
+          min: 1
+          max: 30
+          step: 0.5
+
+    shower_rise_window:
+      name: How Fast the Rise Must Happen (minutes)
+      description: >
+        The humidity must rise by the required amount within this many
+        minutes to count as a shower.
+      default: 2
+      selector:
+        number:
+          min: 1
+          max: 30
+          step: 1
+
+    shower_action:
+      name: What To Do When a Shower Is Detected
+      description: >
+        Actions to run when a shower is detected. Usually: turn on the fan.
+      default: []
+      selector:
+        action: {}
+
+    ############################################################################
+    # SECTION 5 — MANUAL OVERRIDE PROTECTION (no helper entities required)
+    ############################################################################
+    enable_manual_override_protection:
+      name: Enable Manual Override Protection
+      description: >
+        When enabled, if you (or a physical switch/app) manually change the
+        entity being controlled, the automation temporarily backs off
+        instead of immediately undoing your manual change. This reads the
+        entity's own built-in state history — no helper entities needed.
+        Applies to both the high-humidity (fan) side and the low-humidity
+        side independently, using the entities selected below. Note: this
+        only re-checks when the humidity sensor next updates, so protection
+        engages on the next reading rather than the instant you touch the
+        entity.
+      default: false
+      selector:
+        boolean: {}
+
+    monitored_high_entity:
+      name: "Manual Override: High-Side Entity (e.g. fan)"
+      description: >
+        The entity that high_action/high_normal_action actually control
+        (usually your fan). Required if Manual Override Protection is
+        enabled and you want it to apply to the high-humidity side. Select
+        exactly one entity. Leave empty to skip override protection for
+        this side.
+      default: []
+      selector:
+        entity:
+          multiple: true
+
+    monitored_low_entity:
+      name: "Manual Override: Low-Side Entity (e.g. humidifier)"
+      description: >
+        The entity that low_action/low_normal_action actually control
+        (usually your humidifier). Required if Manual Override Protection
+        is enabled and you want it to apply to the low-humidity side.
+        Select exactly one entity. Leave empty to skip override protection
+        for this side.
+      default: []
+      selector:
+        entity:
+          multiple: true
+
+    override_direction:
+      name: Override Protection Direction
+      description: >
+        Which manual changes should be protected, applied to both sides.
+        "Both" means a manual ON blocks the next automatic OFF, and a
+        manual OFF blocks the next automatic ON, each for the duration
+        below.
+      default: "both"
+      selector:
+        select:
+          options:
+            - label: "Both directions"
+              value: "both"
+            - label: "Manual ON blocks auto-OFF only"
+              value: "block_off_after_manual_on"
+            - label: "Manual OFF blocks auto-ON only"
+              value: "block_on_after_manual_off"
+
+    override_duration_minutes:
+      name: Override Protection Duration (minutes)
+      description: >
+        How long a manual change should be respected before the automation
+        resumes normal behavior. Measured from the moment the entity was
+        manually changed.
+      default: 15
+      selector:
+        number:
+          min: 1
+          max: 180
+          mode: slider
+          unit_of_measurement: minutes
+
+    ############################################################################
+    # SECTION 6 — DEBUGGING
+    ############################################################################
+    enable_debug:
+      name: Debug Logging (Optional)
+      description: >
+        When enabled, logs shower detection, ambient-blocker and
+        manual-override decisions to help with tuning.
+      default: false
+      selector:
+        boolean: {}
+
+mode: parallel
+max: 10
+
+##############################################################################
+# TRIGGER
+##############################################################################
+trigger:
+  - platform: state
+    entity_id: !input humidity_sensor
+    id: humidity_change
+
+##############################################################################
+# ACTIONS
+##############################################################################
+action:
+
+  # Ignore non-numeric readings (unavailable / unknown). Previously these were
+  # read as 999%, which looked like extreme humidity (and an 900%+ "shower"
+  # rise) and turned the fan on whenever the sensor dropped off briefly.
+  - condition: template
+    value_template: "{{ is_number(trigger.to_state.state) }}"
+
+  - variables:
+      humidity_sensor: !input humidity_sensor
+      humidity: "{{ trigger.to_state.state | float(0) }}"
+
+      enable_high: !input enable_high
+      enable_low: !input enable_low
+      enable_shower: !input enable_shower
+
+      high_threshold: !input high_threshold
+      low_threshold: !input low_threshold
+      deadband: !input deadband
+
+      high_exit: "{{ high_threshold - deadband }}"
+      low_exit: "{{ low_threshold + deadband }}"
+
+      high_duration: !input high_duration
+      low_duration: !input low_duration
+
+      high_normal_duration: !input high_normal_duration
+      low_normal_duration: !input low_normal_duration
+
+      shower_rise_amount: !input shower_rise_amount
+      shower_rise_window: !input shower_rise_window
+
+      enable_debug: !input enable_debug
+
+      # ---- Ambient humidity blocker
+      ambient_sensor_list: !input ambient_sensor
+      ambient_entity: >-
+        {% set l = ambient_sensor_list if ambient_sensor_list is list
+                   else ([ambient_sensor_list] if ambient_sensor_list else []) %}
+        {{ l | first if l else '' }}
+      ambient_min_difference: !input ambient_min_difference
+      ambient_raw: "{{ states(ambient_entity) if ambient_entity else 'unknown' }}"
+      ambient_ok: "{{ is_number(ambient_raw) }}"
+      ambient: "{{ ambient_raw | float(0) }}"
+      # Fan ON is allowed only if the room is enough above ambient
+      ambient_allows_on: >-
+        {{ not ambient_ok or humidity >= ambient + ambient_min_difference }}
+      # Fan OFF is allowed once the room is back near ambient
+      ambient_says_normal: >-
+        {{ ambient_ok and humidity < ambient + ambient_min_difference - deadband }}
+
+      # ---- Manual override protection — no helper entities. Reads each
+      # ---- monitored entity's own live context/last_changed. A change
+      # ---- looks "manual" if a person did it (context.user_id set) or it
+      # ---- has no automation parent context at all (typical of a
+      # ---- physical switch/device).
+      enable_manual_override_var: !input enable_manual_override_protection
+      override_direction_var: !input override_direction
+      override_duration_minutes_var: !input override_duration_minutes
+
+      monitored_high_entity_list: !input monitored_high_entity
+      monitored_high_entity_var: >-
+        {{ (monitored_high_entity_list | first) if monitored_high_entity_list else none }}
+      monitored_low_entity_list: !input monitored_low_entity
+      monitored_low_entity_var: >-
+        {{ (monitored_low_entity_list | first) if monitored_low_entity_list else none }}
+
+      manual_high_current_state: >-
+        {{ states(monitored_high_entity_var) if monitored_high_entity_var else none }}
+      manual_high_is_manual_and_recent: >-
+        {% set st = states[monitored_high_entity_var] if monitored_high_entity_var else none %}
+        {% if st %}
+          {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+          {% set age = (now() - st.last_changed).total_seconds() %}
+          {{ is_manual and age < (override_duration_minutes_var * 60) }}
+        {% else %}
+          false
+        {% endif %}
+
+      manual_low_current_state: >-
+        {{ states(monitored_low_entity_var) if monitored_low_entity_var else none }}
+      manual_low_is_manual_and_recent: >-
+        {% set st = states[monitored_low_entity_var] if monitored_low_entity_var else none %}
+        {% if st %}
+          {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+          {% set age = (now() - st.last_changed).total_seconds() %}
+          {{ is_manual and age < (override_duration_minutes_var * 60) }}
+        {% else %}
+          false
+        {% endif %}
+
+      manual_override_blocks_high_on_var: >-
+        {{ enable_manual_override_var
+           and monitored_high_entity_var is not none
+           and manual_high_current_state == 'off'
+           and manual_high_is_manual_and_recent
+           and override_direction_var in ['both','block_on_after_manual_off'] }}
+
+      manual_override_blocks_high_off_var: >-
+        {{ enable_manual_override_var
+           and monitored_high_entity_var is not none
+           and manual_high_current_state == 'on'
+           and manual_high_is_manual_and_recent
+           and override_direction_var in ['both','block_off_after_manual_on'] }}
+
+      manual_override_blocks_low_on_var: >-
+        {{ enable_manual_override_var
+           and monitored_low_entity_var is not none
+           and manual_low_current_state == 'off'
+           and manual_low_is_manual_and_recent
+           and override_direction_var in ['both','block_on_after_manual_off'] }}
+
+      manual_override_blocks_low_off_var: >-
+        {{ enable_manual_override_var
+           and monitored_low_entity_var is not none
+           and manual_low_current_state == 'on'
+           and manual_low_is_manual_and_recent
+           and override_direction_var in ['both','block_off_after_manual_on'] }}
+
+  ##########################################################################
+  # DEBUG — log when the ambient blocker stops a high-humidity turn-on
+  ##########################################################################
+  - if:
+      - condition: template
+        value_template: >
+          {{ enable_debug and enable_high and humidity > high_threshold
+             and not ambient_allows_on }}
+    then:
+      - service: logbook.log
+        data:
+          name: Humidity Automation
+          message: >
+            Ambient blocker: room {{ humidity }}% is above
+            {{ high_threshold }}% but within {{ ambient_min_difference }}%
+            of ambient ({{ ambient }}%) — fan not turned on.
+
+  ##########################################################################
+  # HIGH HUMIDITY LOGIC (fan) — independent of the low-humidity logic below
+  ##########################################################################
+  - choose:
+
+      ######################################################################
+      # HIGH HUMIDITY ACTIVATION
+      ######################################################################
+      - conditions:
+          - condition: template
+            value_template: "{{ enable_high and humidity > high_threshold and ambient_allows_on }}"
+          - condition: template
+            value_template: "{{ not manual_override_blocks_high_on_var }}"
+        sequence:
+          - delay:
+              minutes: "{{ high_duration }}"
+          # Recheck humidity and ambient after the delay
+          - condition: template
+            value_template: >
+              {% set h = states(humidity_sensor) %}
+              {% set a = states(ambient_entity) if ambient_entity else 'unknown' %}
+              {{ is_number(h) and h | float > high_threshold
+                 and (not is_number(a) or h | float >= a | float + ambient_min_difference) }}
+          # Recheck override after the delay — the wait can span the
+          # protection window boundary, so don't trust the pre-delay value.
+          - condition: template
+            value_template: >
+              {% set st = states[monitored_high_entity_var] if monitored_high_entity_var else none %}
+              {% if not enable_manual_override_var or not st %}
+                true
+              {% else %}
+                {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+                {% set age = (now() - st.last_changed).total_seconds() %}
+                {{ not (st.state == 'off' and is_manual and age < (override_duration_minutes_var * 60)
+                        and override_direction_var in ['both','block_on_after_manual_off']) }}
+              {% endif %}
+          - sequence: !input high_action
+
+      ######################################################################
+      # HIGH NORMAL RETURN
+      # Off when below the exit threshold, OR (if ambient sensor set) when
+      # the room is back near ambient — so it can't run all day on humid days.
+      ######################################################################
+      - conditions:
+          - condition: template
+            value_template: "{{ enable_high and (humidity < high_exit or ambient_says_normal) }}"
+          - condition: template
+            value_template: "{{ not manual_override_blocks_high_off_var }}"
+        sequence:
+          - delay:
+              minutes: "{{ high_normal_duration }}"
+          - condition: template
+            value_template: >
+              {% set h = states(humidity_sensor) %}
+              {% set a = states(ambient_entity) if ambient_entity else 'unknown' %}
+              {{ is_number(h) and (
+                   h | float < high_exit
+                   or (is_number(a) and h | float < a | float + ambient_min_difference - deadband)
+                 ) }}
+          - condition: template
+            value_template: >
+              {% set st = states[monitored_high_entity_var] if monitored_high_entity_var else none %}
+              {% if not enable_manual_override_var or not st %}
+                true
+              {% else %}
+                {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+                {% set age = (now() - st.last_changed).total_seconds() %}
+                {{ not (st.state == 'on' and is_manual and age < (override_duration_minutes_var * 60)
+                        and override_direction_var in ['both','block_off_after_manual_on']) }}
+              {% endif %}
+          - sequence: !input high_normal_action
+
+    default: []
+
+  ##########################################################################
+  # LOW HUMIDITY LOGIC (e.g. humidifier) — independent of the high logic
+  ##########################################################################
+  - choose:
+
+      ######################################################################
+      # LOW HUMIDITY ACTIVATION
+      ######################################################################
+      - conditions:
+          - condition: template
+            value_template: "{{ enable_low and humidity < low_threshold }}"
+          - condition: template
+            value_template: "{{ not manual_override_blocks_low_on_var }}"
+        sequence:
+          - delay:
+              minutes: "{{ low_duration }}"
+          - condition: template
+            value_template: >
+              {% set h = states(humidity_sensor) %}
+              {{ is_number(h) and h | float < low_threshold }}
+          - condition: template
+            value_template: >
+              {% set st = states[monitored_low_entity_var] if monitored_low_entity_var else none %}
+              {% if not enable_manual_override_var or not st %}
+                true
+              {% else %}
+                {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+                {% set age = (now() - st.last_changed).total_seconds() %}
+                {{ not (st.state == 'off' and is_manual and age < (override_duration_minutes_var * 60)
+                        and override_direction_var in ['both','block_on_after_manual_off']) }}
+              {% endif %}
+          - sequence: !input low_action
+
+      ######################################################################
+      # LOW NORMAL RETURN
+      ######################################################################
+      - conditions:
+          - condition: template
+            value_template: "{{ enable_low and humidity > low_exit }}"
+          - condition: template
+            value_template: "{{ not manual_override_blocks_low_off_var }}"
+        sequence:
+          - delay:
+              minutes: "{{ low_normal_duration }}"
+          - condition: template
+            value_template: >
+              {% set h = states(humidity_sensor) %}
+              {{ is_number(h) and h | float > low_exit }}
+          - condition: template
+            value_template: >
+              {% set st = states[monitored_low_entity_var] if monitored_low_entity_var else none %}
+              {% if not enable_manual_override_var or not st %}
+                true
+              {% else %}
+                {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+                {% set age = (now() - st.last_changed).total_seconds() %}
+                {{ not (st.state == 'on' and is_manual and age < (override_duration_minutes_var * 60)
+                        and override_direction_var in ['both','block_off_after_manual_on']) }}
+              {% endif %}
+          - sequence: !input low_normal_action
+
+    default: []
+
+  ##########################################################################
+  # SHOWER DETECTION (rate of rise) — independent of both blocks above,
+  # so it can't be starved out by the high-humidity branch firing first.
+  ##########################################################################
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ enable_shower }}"
+          - condition: template
+            value_template: >
+              {% set f = trigger.from_state %}
+              {% if f is none or not is_number(f.state) %}
+                false
+              {% else %}
+                {% set now_h = trigger.to_state.state | float %}
+                {% set past_h = f.state | float %}
+                {% set dt = (as_timestamp(trigger.to_state.last_updated) -
+                             as_timestamp(f.last_updated)) / 60 %}
+                {{ dt > 0 and dt <= shower_rise_window and (now_h - past_h) >= shower_rise_amount }}
+              {% endif %}
+          - condition: template
+            value_template: "{{ not manual_override_blocks_high_on_var }}"
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ enable_debug }}"
+            then:
+              - service: logbook.log
+                data:
+                  name: Humidity Automation
+                  message: >
+                    Shower detected: humidity rose {{ shower_rise_amount }}%
+                    within {{ shower_rise_window }} minutes.
+                    manual_override_blocked={{ manual_override_blocks_high_on_var }}
+          - sequence: !input shower_action
+
+    default: []

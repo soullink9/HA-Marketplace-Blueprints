@@ -1,0 +1,116 @@
+# HA-Marketplace-Blueprints v0.1.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+blueprint:
+  name: Z2M Button – Single / Double / Hold (+ Release)
+  description: >
+    Select a Zigbee2MQTT button/switch device and run actions for
+    single press, double press, hold, and (optionally) hold-release.
+    Modeled on the standard Z2M "action" MQTT device trigger.
+  domain: automation
+  source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/z2m_button/z2m_button.yaml
+
+  input:
+    button_device:
+      name: Button Device
+      description: Select your Zigbee2MQTT button device.
+      selector:
+        device:
+          integration: mqtt
+
+    single_press_action:
+      name: Action – Single Press
+      default: []
+      selector:
+        action: {}
+
+    double_press_action:
+      name: Action – Double Press
+      default: []
+      selector:
+        action: {}
+
+    hold_action:
+      name: Action – Hold
+      default: []
+      selector:
+        action: {}
+
+    release_action:
+      name: Action – Release (after hold)
+      description: >
+        Optional. Fires when the button is released following a hold.
+        Useful for "hold to dim/open, release to stop" style behavior.
+        Leave empty if your device doesn't emit a release event or you
+        don't need it.
+      default: []
+      selector:
+        action: {}
+
+    automation_mode:
+      name: Automation Mode
+      description: >
+        How this automation handles overlapping triggers. "Restart" (default)
+        matches typical button behavior — a new press restarts the logic
+        rather than queuing behind a stale run.
+      default: restart
+      selector:
+        select:
+          options:
+            - "single"
+            - "restart"
+            - "queued"
+            - "parallel"
+
+trigger:
+  - id: single_press
+    platform: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: single
+
+  - id: double_press
+    platform: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: double
+
+  - id: hold
+    platform: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: hold
+
+  - id: release
+    platform: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: release
+
+condition: []
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: single_press
+        sequence: !input single_press_action
+
+      - conditions:
+          - condition: trigger
+            id: double_press
+        sequence: !input double_press_action
+
+      - conditions:
+          - condition: trigger
+            id: hold
+        sequence: !input hold_action
+
+      - conditions:
+          - condition: trigger
+            id: release
+        sequence: !input release_action
+
+mode: !input automation_mode

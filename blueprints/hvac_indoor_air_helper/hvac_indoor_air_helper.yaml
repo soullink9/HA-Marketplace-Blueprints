@@ -1,0 +1,406 @@
+# HA-Marketplace-Blueprints v0.1.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+blueprint:
+  name: Indoor Air Helper
+  description: >
+    Watches your indoor air (CO₂, humidity, VOCs, PM2.5). When any sensor goes
+    above its limit, the HVAC fan is boosted. The boost lasts at least the
+    minimum time, then keeps running until every sensor drops back below its
+    limit (minus a small margin), and the fan is returned to the speed it was on
+    before. Every pollutant is optional.
+  domain: automation
+  source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/hvac_indoor_air_helper/hvac_indoor_air_helper.yaml
+  homeassistant:
+    min_version: 2024.10.0
+
+  input:
+    core:
+      name: HVAC and fan
+      icon: mdi:hvac
+      input:
+        climate_entity:
+          name: HVAC Thermostat
+          description: Thermostat to control. Only thermostats with fan speeds are listed.
+          selector:
+            entity:
+              filter:
+                - domain: climate
+                  supported_features:
+                    - climate.ClimateEntityFeature.FAN_MODE
+
+        boost_fan_mode:
+          name: Fan Speed When Boosting
+          description: >
+            Fan speed to use when the air is bad. If your thermostat uses a
+            different name (e.g. "med"), type it in.
+          default: high
+          selector:
+            select:
+              custom_value: true
+              options: [auto, low, medium, high]
+
+        normal_fan_mode:
+          name: Fallback Fan Speed
+          description: >
+            Used when the previous fan speed can't be determined (for example,
+            the fan was already at the boost speed when the boost started).
+          default: auto
+          selector:
+            select:
+              custom_value: true
+              options: [auto, low, medium, high]
+
+        do_reset:
+          name: Return Fan Afterwards
+          description: Put the fan back to its previous speed once the air is clean.
+          default: true
+          selector:
+            boolean: {}
+
+        run_condition:
+          name: When to Boost
+          default: always
+          selector:
+            select:
+              options:
+                - label: Any time
+                  value: always
+                - label: Only when the system isn't off
+                  value: system_on
+                - label: Only while actively heating or cooling
+                  value: active
+
+        fan_only_when_off:
+          name: Switch to Fan Only When System Is Off
+          description: >
+            Some thermostats ignore fan speed while the system is off. Turn this
+            on to switch to Fan Only mode during the boost and back to Off
+            afterwards. Only applies when "When to Boost" is "Any time", and
+            only if the thermostat offers a Fan Only mode.
+          default: false
+          selector:
+            boolean: {}
+
+    timing:
+      name: Timing
+      icon: mdi:timer-outline
+      collapsed: true
+      input:
+        trigger_delay:
+          name: Must Stay High For
+          description: Ignore short spikes. The reading must stay above the limit this long.
+          default:
+            minutes: 2
+          selector:
+            duration: {}
+
+        min_boost_time:
+          name: Minimum Boost Time
+          description: Keep the fan boosted at least this long, even if the air clears sooner.
+          default:
+            minutes: 30
+          selector:
+            duration: {}
+
+        clear_margin:
+          name: Clear Margin
+          description: >
+            The air counts as clean once every sensor is this far below its
+            limit. Stops the fan from flip-flopping near the limit
+            (10% means a 1000 ppm CO₂ limit clears at 900 ppm).
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 50
+              unit_of_measurement: "%"
+              mode: slider
+
+    co2:
+      name: CO₂
+      icon: mdi:molecule-co2
+      input:
+        enable_co2:
+          name: Watch CO₂
+          default: true
+          selector:
+            boolean: {}
+        co2_sensors:
+          name: CO₂ Sensors
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: sensor
+                  device_class: carbon_dioxide
+        co2_threshold:
+          name: CO₂ Limit
+          description: Air starts to feel stuffy above about 1000 ppm.
+          default: 1000
+          selector:
+            number:
+              min: 400
+              max: 2000
+              step: 50
+              unit_of_measurement: ppm
+              mode: slider
+
+    humidity:
+      name: Humidity
+      icon: mdi:water-percent
+      collapsed: true
+      input:
+        enable_humidity:
+          name: Watch Humidity
+          default: false
+          selector:
+            boolean: {}
+        humidity_sensors:
+          name: Humidity Sensors
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: sensor
+                  device_class: humidity
+        humidity_threshold:
+          name: Humidity Limit
+          description: Mold risk rises above about 60%.
+          default: 60
+          selector:
+            number:
+              min: 30
+              max: 100
+              unit_of_measurement: "%"
+              mode: slider
+
+    voc:
+      name: VOCs
+      icon: mdi:air-filter
+      collapsed: true
+      input:
+        enable_voc:
+          name: Watch VOCs
+          default: false
+          selector:
+            boolean: {}
+        voc_sensors:
+          name: VOC Sensors
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: sensor
+                  device_class:
+                    - volatile_organic_compounds
+                    - volatile_organic_compounds_parts
+        voc_threshold:
+          name: VOC Limit
+          description: >
+            In the sensor's own unit: ppb for most sensors, µg/m³ for some.
+            500 ppb is a common warning level.
+          default: 500
+          selector:
+            number:
+              min: 50
+              max: 2000
+              mode: box
+
+    pm25:
+      name: PM2.5
+      icon: mdi:blur
+      collapsed: true
+      input:
+        enable_pm25:
+          name: Watch PM2.5
+          default: false
+          selector:
+            boolean: {}
+        pm25_sensors:
+          name: PM2.5 Sensors
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: sensor
+                  device_class: pm25
+        pm25_threshold:
+          name: PM2.5 Limit
+          description: The US 24-hour standard is 35 µg/m³.
+          default: 35
+          selector:
+            number:
+              min: 5
+              max: 200
+              unit_of_measurement: "µg/m³"
+              mode: slider
+
+    notifications:
+      name: Notifications
+      icon: mdi:bell-outline
+      collapsed: true
+      input:
+        notify_target:
+          name: Notify
+          description: Phone or other notify entity. Leave empty for no notifications.
+          default: {}
+          selector:
+            target:
+              entity:
+                domain: notify
+        notify_clear:
+          name: Also Notify When Air Is Clean
+          default: true
+          selector:
+            boolean: {}
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input co2_sensors
+    above: !input co2_threshold
+    for: !input trigger_delay
+    enabled: !input enable_co2
+
+  - trigger: numeric_state
+    entity_id: !input humidity_sensors
+    above: !input humidity_threshold
+    for: !input trigger_delay
+    enabled: !input enable_humidity
+
+  - trigger: numeric_state
+    entity_id: !input voc_sensors
+    above: !input voc_threshold
+    for: !input trigger_delay
+    enabled: !input enable_voc
+
+  - trigger: numeric_state
+    entity_id: !input pm25_sensors
+    above: !input pm25_threshold
+    for: !input trigger_delay
+    enabled: !input enable_pm25
+
+  # Re-check periodically: catches air that was already bad after a restart,
+  # or that went bad while the HVAC condition below wasn't met.
+  - trigger: time_pattern
+    minutes: "/10"
+
+variables:
+  climate_entity: !input climate_entity
+  boost_fan_mode: !input boost_fan_mode
+  normal_fan_mode: !input normal_fan_mode
+  do_reset: !input do_reset
+  run_condition: !input run_condition
+  clear_margin: !input clear_margin
+  notify_target: !input notify_target
+  notify_clear: !input notify_clear
+  checks:
+    - name: "CO₂"
+      active: !input enable_co2
+      sensors: !input co2_sensors
+      limit: !input co2_threshold
+    - name: Humidity
+      active: !input enable_humidity
+      sensors: !input humidity_sensors
+      limit: !input humidity_threshold
+    - name: VOCs
+      active: !input enable_voc
+      sensors: !input voc_sensors
+      limit: !input voc_threshold
+    - name: "PM2.5"
+      active: !input enable_pm25
+      sensors: !input pm25_sensors
+      limit: !input pm25_threshold
+  bad: >
+    {% set ns = namespace(items=[]) %}
+    {% for c in checks if c.active %}
+      {% for s in c.sensors if states(s) | is_number and states(s) | float > c.limit | float %}
+        {% set ns.items = ns.items + [c.name ~ ' ' ~ states(s) ~ ' ' ~ (state_attr(s, 'unit_of_measurement') or '') ~ ' (' ~ (state_attr(s, 'friendly_name') or s) ~ ')'] %}
+      {% endfor %}
+    {% endfor %}
+    {{ ns.items }}
+  fan_only_when_off: !input fan_only_when_off
+  use_fan_only: >
+    {{ fan_only_when_off and states(climate_entity) == 'off'
+       and 'fan_only' in (state_attr(climate_entity, 'hvac_modes') or []) }}
+  restore_fan_mode: >
+    {% set p = state_attr(climate_entity, 'fan_mode') %}
+    {{ p if p and p != boost_fan_mode else normal_fan_mode }}
+  has_notify: >
+    {% set t = notify_target or {} %}
+    {{ (t.get('entity_id') or t.get('device_id') or t.get('area_id') or []) | length > 0 }}
+
+conditions:
+  - "{{ bad | count > 0 }}"
+  - >
+    {% if run_condition == 'system_on' %}
+      {{ states(climate_entity) not in ['off', 'unavailable', 'unknown'] }}
+    {% elif run_condition == 'active' %}
+      {{ state_attr(climate_entity, 'hvac_action') in ['heating', 'cooling'] }}
+    {% else %}
+      true
+    {% endif %}
+
+actions:
+  - if: "{{ use_fan_only }}"
+    then:
+      - action: climate.set_hvac_mode
+        target:
+          entity_id: "{{ climate_entity }}"
+        data:
+          hvac_mode: fan_only
+
+  - action: climate.set_fan_mode
+    target:
+      entity_id: "{{ climate_entity }}"
+    data:
+      fan_mode: "{{ boost_fan_mode }}"
+
+  - if: "{{ has_notify }}"
+    then:
+      - action: notify.send_message
+        target: !input notify_target
+        data:
+          message: "Indoor air is poor: {{ bad | join(', ') }}. Fan boosted to {{ boost_fan_mode }}."
+
+  - delay: !input min_boost_time
+
+  # Wait until every watched sensor is below its limit minus the margin.
+  - wait_template: >
+      {% set ns = namespace(bad=false) %}
+      {% for c in checks if c.active %}
+        {% for s in c.sensors if states(s) | is_number and states(s) | float > (c.limit | float) * (1 - clear_margin / 100) %}
+          {% set ns.bad = true %}
+        {% endfor %}
+      {% endfor %}
+      {{ not ns.bad }}
+
+  # Only restore if nobody changed the fan in the meantime.
+  - if: "{{ do_reset and state_attr(climate_entity, 'fan_mode') == boost_fan_mode }}"
+    then:
+      - action: climate.set_fan_mode
+        target:
+          entity_id: "{{ climate_entity }}"
+        data:
+          fan_mode: "{{ restore_fan_mode }}"
+
+  # Turn the system back off only if we switched it to Fan Only and it's still there.
+  - if: "{{ do_reset and use_fan_only and states(climate_entity) == 'fan_only' }}"
+    then:
+      - action: climate.set_hvac_mode
+        target:
+          entity_id: "{{ climate_entity }}"
+        data:
+          hvac_mode: "off"
+
+  - if: "{{ has_notify and notify_clear }}"
+    then:
+      - action: notify.send_message
+        target: !input notify_target
+        data:
+          message: "Indoor air is back to normal.{{ ' Fan returned to ' ~ restore_fan_mode ~ '.' if do_reset else '' }}"

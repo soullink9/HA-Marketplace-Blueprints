@@ -1,0 +1,362 @@
+# HA-Marketplace-Blueprints v0.1.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+blueprint:
+  name: Curtains – Morning Open / Night Close
+  description: >
+    Automatically opens curtains in the morning and closes them at night,
+    based on illuminance and/or sun elevation. Either direction can be
+    disabled independently. No helper entities required.
+
+    Includes three optional "outer protections" against missed events:
+    a Home Assistant restart recheck, a periodic safety heartbeat, and
+    an absolute failsafe time. These guard against a missed threshold
+    crossing (e.g. HA restarts after the crossing already happened) or
+    a dead/unavailable sensor.
+  domain: automation
+  source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/open_close_curtains/open_close_curtains.yaml
+
+  input:
+
+    curtains:
+      name: Curtains
+      description: >
+        The curtains to control. Closed at night if any are open, opened
+        in the morning if any are closed.
+      selector:
+        entity:
+          domain: cover
+          multiple: true
+
+    # -----------------------------
+    # EVENING / CLOSE SIDE
+    # -----------------------------
+
+    enable_evening_close:
+      name: Enable Evening Close
+      default: true
+      selector:
+        boolean: {}
+
+    evening_illuminance_sensor:
+      name: (Evening) Illuminance Sensor
+      default: []
+      selector:
+        entity:
+          domain: sensor
+          device_class: illuminance
+          multiple: false
+
+    evening_illuminance_threshold:
+      name: (Evening) Illuminance Threshold
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 200
+          unit_of_measurement: lx
+          mode: slider
+
+    evening_below_duration:
+      name: (Evening) Must Stay Dark For
+      default:
+        minutes: 1
+      selector:
+        duration: {}
+
+    use_evening_sun_fallback:
+      name: (Evening) Also Trigger On Sun Elevation
+      description: Backup trigger in case the illuminance sensor is unavailable.
+      default: true
+      selector:
+        boolean: {}
+
+    evening_sun_elevation:
+      name: (Evening) Sun Elevation Threshold
+      description: Trigger when sun elevation drops below this (degrees).
+      default: -2
+      selector:
+        number:
+          min: -20
+          max: 20
+          unit_of_measurement: "°"
+          mode: slider
+
+    enable_evening_failsafe:
+      name: (Evening) Enable Failsafe Time
+      description: >
+        Force-close curtains at a fixed time no matter what the sensors
+        say. Use this if your illuminance sensor is prone to going
+        unavailable. Off by default.
+      default: false
+      selector:
+        boolean: {}
+
+    evening_failsafe_time:
+      name: (Evening) Failsafe Close Time
+      default: "22:00:00"
+      selector:
+        time: {}
+
+    # -----------------------------
+    # MORNING / OPEN SIDE
+    # -----------------------------
+
+    enable_morning_open:
+      name: Enable Morning Open
+      default: true
+      selector:
+        boolean: {}
+
+    morning_illuminance_sensor:
+      name: (Morning) Illuminance Sensor
+      default: []
+      selector:
+        entity:
+          domain: sensor
+          device_class: illuminance
+          multiple: false
+
+    morning_illuminance_threshold:
+      name: (Morning) Illuminance Threshold
+      default: 50
+      selector:
+        number:
+          min: 0
+          max: 500
+          unit_of_measurement: lx
+          mode: slider
+
+    morning_above_duration:
+      name: (Morning) Must Stay Bright For
+      default:
+        minutes: 1
+      selector:
+        duration: {}
+
+    use_morning_sun_fallback:
+      name: (Morning) Also Trigger On Sun Elevation
+      default: true
+      selector:
+        boolean: {}
+
+    morning_sun_elevation:
+      name: (Morning) Sun Elevation Threshold
+      description: Trigger when sun elevation rises above this (degrees).
+      default: 0
+      selector:
+        number:
+          min: -20
+          max: 20
+          unit_of_measurement: "°"
+          mode: slider
+
+    morning_not_before:
+      name: (Morning) Earliest Allowed Time
+      description: >
+        Never open before this time, even if it's bright/sun is up
+        (handy in summer when sunrise is very early).
+      default: "06:30:00"
+      selector:
+        time: {}
+
+    enable_morning_failsafe:
+      name: (Morning) Enable Failsafe Time
+      description: >
+        Force-open curtains at a fixed time no matter what the sensors
+        say. Use this if your illuminance sensor is prone to going
+        unavailable. Off by default.
+      default: false
+      selector:
+        boolean: {}
+
+    morning_failsafe_time:
+      name: (Morning) Failsafe Open Time
+      default: "09:00:00"
+      selector:
+        time: {}
+
+    # -----------------------------
+    # OUTER PROTECTIONS
+    # -----------------------------
+
+    enable_startup_recheck:
+      name: Re-check On Home Assistant Restart
+      description: >
+        A threshold-crossing trigger won't fire again if HA restarts
+        after the crossing already happened (e.g. reboot at 9am when
+        it got bright at 7am). This re-evaluates current conditions on
+        every HA startup so the curtains catch up.
+      default: true
+      selector:
+        boolean: {}
+
+    enable_periodic_recheck:
+      name: Enable Periodic Safety Check
+      description: >
+        Every 15 minutes, re-checks whether curtains match current
+        conditions, independent of whether a crossing trigger ever
+        fired. Self-healing against missed triggers, sensor dropouts,
+        or automation reloads. Harmless when curtains are already in
+        the correct state.
+      default: true
+      selector:
+        boolean: {}
+
+mode: single
+
+variables:
+  enable_evening_close: !input enable_evening_close
+  enable_morning_open: !input enable_morning_open
+  enable_evening_failsafe: !input enable_evening_failsafe
+  enable_morning_failsafe: !input enable_morning_failsafe
+  use_evening_sun_fallback: !input use_evening_sun_fallback
+  use_morning_sun_fallback: !input use_morning_sun_fallback
+
+triggers:
+  - trigger: numeric_state
+    id: evening_illuminance
+    entity_id: !input evening_illuminance_sensor
+    below: !input evening_illuminance_threshold
+    for: !input evening_below_duration
+
+  - trigger: numeric_state
+    id: evening_sun_elevation
+    entity_id: sun.sun
+    attribute: elevation
+    below: !input evening_sun_elevation
+    enabled: !input use_evening_sun_fallback
+
+  - trigger: numeric_state
+    id: morning_illuminance
+    entity_id: !input morning_illuminance_sensor
+    above: !input morning_illuminance_threshold
+    for: !input morning_above_duration
+
+  - trigger: numeric_state
+    id: morning_sun_elevation
+    entity_id: sun.sun
+    attribute: elevation
+    above: !input morning_sun_elevation
+    enabled: !input use_morning_sun_fallback
+
+  - trigger: homeassistant
+    id: startup_recheck
+    event: start
+    enabled: !input enable_startup_recheck
+
+  - trigger: time_pattern
+    id: periodic_recheck
+    minutes: "/15"
+    enabled: !input enable_periodic_recheck
+
+  - trigger: time
+    id: evening_failsafe
+    at: !input evening_failsafe_time
+    enabled: !input enable_evening_failsafe
+
+  - trigger: time
+    id: morning_failsafe
+    at: !input morning_failsafe_time
+    enabled: !input enable_morning_failsafe
+
+conditions: []
+
+actions:
+  - choose:
+
+      # ---- EVENING FAILSAFE: force close, ignore sensors ----
+      - conditions:
+          - condition: trigger
+            id: evening_failsafe
+          - "{{ enable_evening_close }}"
+          - condition: state
+            entity_id: !input curtains
+            state: "open"
+            match: any
+        sequence:
+          - action: cover.close_cover
+            target:
+              entity_id: !input curtains
+
+      # ---- EVENING BRANCH: crossing OR recheck confirms it's dark ----
+      - conditions:
+          - condition: trigger
+            id:
+              - evening_illuminance
+              - evening_sun_elevation
+              - startup_recheck
+              - periodic_recheck
+          - "{{ enable_evening_close }}"
+          - condition: state
+            entity_id: !input curtains
+            state: "open"
+            match: any
+          - condition: or
+            conditions:
+              - condition: trigger
+                id:
+                  - evening_illuminance
+                  - evening_sun_elevation
+              - condition: numeric_state
+                entity_id: !input evening_illuminance_sensor
+                below: !input evening_illuminance_threshold
+              - condition: and
+                conditions:
+                  - "{{ use_evening_sun_fallback }}"
+                  - condition: numeric_state
+                    entity_id: sun.sun
+                    attribute: elevation
+                    below: !input evening_sun_elevation
+        sequence:
+          - action: cover.close_cover
+            target:
+              entity_id: !input curtains
+
+      # ---- MORNING FAILSAFE: force open, ignore sensors ----
+      - conditions:
+          - condition: trigger
+            id: morning_failsafe
+          - "{{ enable_morning_open }}"
+          - condition: state
+            entity_id: !input curtains
+            state: "closed"
+            match: any
+        sequence:
+          - action: cover.open_cover
+            target:
+              entity_id: !input curtains
+
+      # ---- MORNING BRANCH: crossing OR recheck confirms it's bright ----
+      - conditions:
+          - condition: trigger
+            id:
+              - morning_illuminance
+              - morning_sun_elevation
+              - startup_recheck
+              - periodic_recheck
+          - "{{ enable_morning_open }}"
+          - condition: time
+            after: !input morning_not_before
+          - condition: state
+            entity_id: !input curtains
+            state: "closed"
+            match: any
+          - condition: or
+            conditions:
+              - condition: trigger
+                id:
+                  - morning_illuminance
+                  - morning_sun_elevation
+              - condition: numeric_state
+                entity_id: !input morning_illuminance_sensor
+                above: !input morning_illuminance_threshold
+              - condition: and
+                conditions:
+                  - "{{ use_morning_sun_fallback }}"
+                  - condition: numeric_state
+                    entity_id: sun.sun
+                    attribute: elevation
+                    above: !input morning_sun_elevation
+        sequence:
+          - action: cover.open_cover
+            target:
+              entity_id: !input curtains
