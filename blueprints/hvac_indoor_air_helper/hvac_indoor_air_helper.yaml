@@ -1,4 +1,4 @@
-# HA-Marketplace-Blueprints v0.2.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.2.1 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
   name: Indoor Air Helper
   description: >
@@ -19,13 +19,17 @@ blueprint:
       input:
         climate_entity:
           name: HVAC Thermostat
-          description: Thermostat to control. Only thermostats with fan speeds are listed.
+          description: >
+            Thermostat to control. It must have fan speeds (a Fan Mode
+            setting in its card); if it doesn't, the boost fails with an
+            error in the automation's trace.
+          # No supported_features filter here: Home Assistant 2026.11 rejects
+          # climate.ClimateEntityFeature.FAN_MODE in the filter ("expected str
+          # ... Got None") and refuses to load the whole blueprint.
           selector:
             entity:
               filter:
                 - domain: climate
-                  supported_features:
-                    - climate.ClimateEntityFeature.FAN_MODE
 
         boost_fan_mode:
           name: Fan Speed When Boosting

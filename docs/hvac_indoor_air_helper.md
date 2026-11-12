@@ -31,5 +31,8 @@ Fan Only mode switched on for a boost isn't undone after a restart.
 
 ## Thermostat compatibility
 
-Only thermostats that support fan modes are listed. If your thermostat
-names its speeds differently (for example `med`), type the name in.
+Every thermostat is listed, so pick one that has fan speeds (a Fan Mode
+setting on its card). The list used to be limited to thermostats with fan
+modes, but Home Assistant 2026.11 refuses to load a blueprint with that
+filter. If your thermostat names its speeds differently (for example
+`med`), type the name in.

@@ -2,6 +2,14 @@
 
 All blueprints share one version number.
 
+## 0.2.1
+
+### Indoor Air Helper (HVAC)
+
+- Fixed: Home Assistant 2026.11 refused to load the blueprint ("expected str
+  at …supported_features[0][0]. Got None"). The thermostat picker no longer
+  filters on fan-mode support, so it lists every thermostat.
+
 ## 0.2.0
 
 ### Adaptive Light Controller
