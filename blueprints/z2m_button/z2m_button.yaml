@@ -7,6 +7,8 @@ blueprint:
     Modeled on the standard Z2M "action" MQTT device trigger.
   domain: automation
   source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/z2m_button/z2m_button.yaml
+  homeassistant:
+    min_version: 2024.10.0
 
   input:
     button_device:
@@ -60,38 +62,38 @@ blueprint:
             - "queued"
             - "parallel"
 
-trigger:
+triggers:
   - id: single_press
-    platform: device
+    trigger: device
     device_id: !input button_device
     domain: mqtt
     type: action
     subtype: single
 
   - id: double_press
-    platform: device
+    trigger: device
     device_id: !input button_device
     domain: mqtt
     type: action
     subtype: double
 
   - id: hold
-    platform: device
+    trigger: device
     device_id: !input button_device
     domain: mqtt
     type: action
     subtype: hold
 
   - id: release
-    platform: device
+    trigger: device
     device_id: !input button_device
     domain: mqtt
     type: action
     subtype: release
 
-condition: []
+conditions: []
 
-action:
+actions:
   - choose:
       - conditions:
           - condition: trigger

@@ -40,6 +40,11 @@ All blueprints share one version number.
 - The fan now switches when humidity crosses into high / normal, instead of
   being re-sent on every reading. A one-off check runs after a restart.
 
+### Z2M Button
+
+- Moved to the current `triggers:` / `actions:` syntax (needs Home Assistant
+  2024.10 or newer). No change in behaviour.
+
 ### Indoor Air Helper (HVAC)
 
 - Fixed: a restart in the middle of a boost left the fan on the boost speed
