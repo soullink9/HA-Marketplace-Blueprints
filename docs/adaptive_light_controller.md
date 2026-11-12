@@ -17,6 +17,34 @@ explanation, so this page covers how the pieces fit together.
 4. **Guards (Sections 8–9)** get the final say: Media Guard, Minimum Lux to
    Keep ON, OFF Block Window, Block Entities and Manual Override.
 
+## When the lux sensor stops reporting
+
+Home Assistant keeps showing a sensor's last value after it stops sending.
+A weather station that goes quiet overnight would keep saying "dark" all
+morning (lights on in daylight), or one that dies in the afternoon would
+keep saying "bright" all night.
+
+- **Treat Lux Sensor As Dead After** (Section 5, default 30 minutes): if the
+  sensor hasn't reported for this long, its value is ignored.
+- **Use Sun Position When the Lux Sensor Is Dead** (Section 5, default on):
+  while the sensor is dead or unavailable, the sun casts the lux vote using
+  the Sun Elevation Threshold from Section 4.
+
+The debug log line shows `lux_ok`, `lux_use_sun` and `lux_value`.
+
+## Manual override and the automation's own clock
+
+Manual-override protection treats a change with no parent context as
+"manual" (physical switches look like this). Runs started by a clock —
+Self-Healing every 5 minutes and the Time Window, Quiet Hours and OFF Block
+Window times — have no parent context either, so the automation's own
+clock-driven ON/OFF used to count as manual and block the opposite action
+for the whole Override Duration. Changes in the first 10 seconds of those
+minutes are now treated as the automation's own.
+
+Lights that drop off the Zigbee network and come back also have no parent
+context, so they can still briefly look like a manual change.
+
 ## Circadian brightness
 
 When on, every automatic ON sets brightness and colour temperature from the

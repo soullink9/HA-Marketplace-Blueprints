@@ -156,8 +156,9 @@ blueprint:
           name: Sun Elevation Threshold
           description: >
             Sun angle, in degrees, below which it's dark enough to want
-            lights ON. Lower means darker is required. Only used if "Use
-            Sun Position" above is on.
+            lights ON. Lower means darker is required. Used if "Use Sun
+            Position" above is on, and also by "Use Sun Position When the
+            Lux Sensor Is Dead" in Section 5 (even with Sun Position off).
           default: -4
           selector:
             number:
@@ -214,6 +215,37 @@ blueprint:
             number:
               min: 0
               max: 2000
+
+        lux_stale_minutes:
+          name: Treat Lux Sensor As Dead After (minutes)
+          description: >
+            If the brightness sensor hasn't reported anything for this
+            long, its last value is no longer trusted. Home Assistant keeps
+            showing the last reading when a sensor stops sending (for
+            example a solar-powered weather station that runs flat
+            overnight), which would otherwise look like "dark" all morning
+            or "bright" all night. 0 = never. Also applies to Minimum Lux
+            to Keep ON in Section 8.
+          default: 30
+          selector:
+            number:
+              min: 0
+              max: 720
+              mode: box
+              unit_of_measurement: minutes
+
+        lux_fallback_to_sun:
+          name: Use Sun Position When the Lux Sensor Is Dead
+          description: >
+            When the brightness sensor is unavailable or dead (see above),
+            its vote is replaced by the sun: below the Sun Elevation
+            Threshold in Section 4 counts as dark, above it as bright. Used
+            even if "Use Sun Position" is off. When off, a dead sensor
+            votes "bright", so with "Lux only" the lights won't come on
+            until it reports again.
+          default: true
+          selector:
+            boolean: {}
 
     section_6_ambient_logic:
       name: "6 · Ambient Logic Preset"
@@ -433,7 +465,7 @@ blueprint:
             When on, pauses ALL automatic control (ON and OFF, from
             presence, the schedule, and self-healing alike) while a
             selected media player is playing, so lights aren't touched
-            mid-movie. Independent of the block entities in Section 8.
+            mid-movie. Independent of the block entities in Section 9.
           default: false
           selector:
             boolean: {}
@@ -759,6 +791,8 @@ variables:
   lux_sensor: "{{ (lux_sensor_list | first) if lux_sensor_list else none }}"
   lux_on_threshold: !input lux_on_threshold
   lux_off_threshold: !input lux_off_threshold
+  lux_stale_minutes: !input lux_stale_minutes
+  lux_fallback_to_sun: !input lux_fallback_to_sun
 
   preset_choice: !input preset_choice
 
@@ -820,12 +854,20 @@ variables:
     {% set e = state_attr('sun.sun', 'elevation') %}
     {{ e if e is not none else -90 }}
 
-  lux_value: >
-    {% if lux_enabled and lux_sensor and states(lux_sensor) not in ['unknown','unavailable','none',''] %}
-      {{ states(lux_sensor) | float(0) }}
-    {% else %}
-      99999
-    {% endif %}
+  # The lux sensor is trusted only if it has a number AND reported recently.
+  # last_reported moves on every update even when the value is unchanged,
+  # so a sensor sitting at 0 lx all night is still "fresh". A station that
+  # stopped sending keeps its last value in Home Assistant forever, which
+  # is what made lights come on at midday and stay off at night.
+  lux_fresh: >
+    {% set st = states[lux_sensor] if lux_sensor else none %}
+    {{ st is not none and st.state | is_number
+       and (lux_stale_minutes | int == 0
+            or (now() - st.last_reported).total_seconds() < lux_stale_minutes | int * 60) }}
+  lux_ok: "{{ lux_enabled and lux_fresh }}"
+  lux_use_sun: "{{ lux_enabled and not lux_ok and lux_fallback_to_sun }}"
+
+  lux_value: "{{ states(lux_sensor) | float(99999) if lux_ok else 99999 }}"
 
   time_window_active: >
     {% set now_t = strptime(now_str, '%H:%M:%S').time() %}
@@ -843,8 +885,17 @@ variables:
   time_wants_off: "{{ time_window_enabled and not (time_window_active | bool) }}"
   sun_wants_on: "{{ sun_elev <= solar_threshold if solar_enabled else false }}"
   sun_wants_off: "{{ sun_elev > solar_threshold if solar_enabled else false }}"
-  lux_wants_on: "{{ lux_value <= lux_on_threshold if lux_enabled else false }}"
-  lux_wants_off: "{{ lux_value >= lux_off_threshold if lux_enabled else false }}"
+  # Dead sensor + fallback: the sun casts the lux vote instead.
+  lux_wants_on: >
+    {% if not lux_enabled %} {{ false }}
+    {% elif lux_use_sun %} {{ sun_elev <= solar_threshold }}
+    {% else %} {{ lux_value <= lux_on_threshold }}
+    {% endif %}
+  lux_wants_off: >
+    {% if not lux_enabled %} {{ false }}
+    {% elif lux_use_sun %} {{ sun_elev > solar_threshold }}
+    {% else %} {{ lux_value >= lux_off_threshold }}
+    {% endif %}
 
   preset_on: >
     {% set p = preset_choice if preset_choice != 'auto' else 'time_or_sun_and_lux' %}
@@ -935,24 +986,43 @@ variables:
       {{ enable_off_block_window_var and (now_str >= start or now_str <= end) }}
     {% endif %}
 
+  # Only a fresh reading can hold the lights on; a dead sensor stuck on its
+  # overnight value would otherwise block every OFF all day.
   lux_keep_on_active: >
-    {% set lv = (states(lux_sensor) | float(999999)) if lux_sensor else 999999 %}
-    {{ lv < min_lux_keep_on_var }}
+    {{ lux_fresh and states(lux_sensor) | float(999999) < min_lux_keep_on_var }}
 
   # ---------------------------------------------------------------------------
   # MANUAL OVERRIDE PROTECTION — no helpers. Reads each light's own live
   # context/last_changed. A change looks "manual" if a person did it
-  # (context.user_id set) or has no automation parent context at all
-  # (typical of a physical switch). Known HA quirk: a light changed by a
-  # time-triggered automation can occasionally also show a blank parent
-  # context — rare, low-stakes (worst case: one extra skipped ON/OFF).
+  # (context.user_id set) or has no parent context at all (typical of a
+  # physical switch).
+  #
+  # Catch: a run started by a clock trigger (Self-Healing every 5 minutes,
+  # the Time Window, Quiet Hours or OFF Block Window times) has no parent
+  # context either, so this automation's OWN clock-driven ON/OFF looked
+  # manual and blocked the next opposite action for the whole Override
+  # Duration. Those runs always start at second 0 of a 5-minute mark or of
+  # one of the configured times, so a parent-less change in the first few
+  # seconds of those minutes is treated as ours. A real switch press only
+  # collides with that window about 3% of the time.
   # ---------------------------------------------------------------------------
+  clock_trigger_minutes: >
+    {% set ns = namespace(m=[]) %}
+    {% for t in [on_time, off_time, quiet_hours_start, quiet_hours_end, off_block_end_var] %}
+      {% set ns.m = ns.m + [(t | string)[:5]] %}
+    {% endfor %}
+    {{ ns.m }}
   any_manual_on_var: >
     {% set ns = namespace(found=false) %}
     {% for eid in light_ids %}
       {% set st = states[eid] %}
       {% if st and st.state == 'on' %}
-        {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+        {% set lc = as_local(st.last_changed) %}
+        {% set from_our_clock = lc.second < 10
+             and ((self_healing_enabled_var and lc.minute % 5 == 0)
+                  or lc.strftime('%H:%M') in clock_trigger_minutes) %}
+        {% set is_manual = (st.context.user_id is not none)
+             or (st.context.parent_id is none and not from_our_clock) %}
         {% set age = (now() - st.last_changed).total_seconds() %}
         {% if is_manual and age < (override_duration_minutes_var * 60) %}
           {% set ns.found = true %}
@@ -966,7 +1036,12 @@ variables:
     {% for eid in light_ids %}
       {% set st = states[eid] %}
       {% if st and st.state == 'off' %}
-        {% set is_manual = (st.context.user_id is not none) or (st.context.parent_id is none) %}
+        {% set lc = as_local(st.last_changed) %}
+        {% set from_our_clock = lc.second < 10
+             and ((self_healing_enabled_var and lc.minute % 5 == 0)
+                  or lc.strftime('%H:%M') in clock_trigger_minutes) %}
+        {% set is_manual = (st.context.user_id is not none)
+             or (st.context.parent_id is none and not from_our_clock) %}
         {% set age = (now() - st.last_changed).total_seconds() %}
         {% if is_manual and age < (override_duration_minutes_var * 60) %}
           {% set ns.found = true %}
@@ -1020,6 +1095,7 @@ actions:
             presence_configured={{ presence_configured }} presence_active={{ presence_active }}
             presence_off_and_delay_elapsed={{ presence_off_and_delay_elapsed }} ambient_off_ignores_presence={{ ambient_off_ignores_presence_var }}
             media_playing={{ media_playing }} off_block_active={{ off_block_active }}
+            lux_ok={{ lux_ok }} lux_use_sun={{ lux_use_sun }} lux_value={{ lux_value }}
             lux_keep_on_active={{ lux_keep_on_active }}
             history_blocks_on={{ history_blocks_on_var }} history_blocks_off={{ history_blocks_off_var }}
             block_entities_block_on={{ block_entities_block_on_var }} block_entities_block_off={{ block_entities_block_off_var }}

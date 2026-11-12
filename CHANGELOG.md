@@ -4,6 +4,17 @@ All blueprints share one version number.
 
 ## Unreleased
 
+### Adaptive Light Controller
+
+- Added **Treat Lux Sensor As Dead After** (default 30 min) and **Use Sun
+  Position When the Lux Sensor Is Dead** (default on). A lux sensor that
+  stops reporting no longer leaves the lights on all day or off all night.
+- Minimum Lux to Keep ON ignores a dead sensor.
+- Fixed: lights switched by Self-Healing or a configured time were treated
+  as a manual change, blocking the next automatic ON/OFF for the Override
+  Duration.
+- Debug log shows `lux_ok`, `lux_use_sun` and `lux_value`.
+
 ### Curtains – Morning Open / Night Close
 
 - Fixed: the morning branch had no end time, so the 15-minute check could
