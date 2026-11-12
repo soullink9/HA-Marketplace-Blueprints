@@ -101,6 +101,22 @@ blueprint:
           selector:
             duration: {}
 
+        restart_cleanup:
+          name: Finish a Boost Cut Short by a Restart
+          description: >
+            A restart in the middle of a boost ends the run that would have
+            put the fan back, leaving it on the boost speed for good. When
+            this is on and Home Assistant starts with the fan at the boost
+            speed and the air already clean, the fan is set to the
+            Fallback Fan Speed (the speed from before the boost is lost in
+            a restart). If the air is still bad, the regular 10-minute
+            check picks the boost up again. Note: this also resets a boost
+            speed you picked yourself, if HA restarts while the air is
+            clean. Only acts when "Return Fan Afterwards" is on.
+          default: true
+          selector:
+            boolean: {}
+
         clear_margin:
           name: Clear Margin
           description: >
@@ -290,6 +306,12 @@ triggers:
   - trigger: time_pattern
     minutes: "/10"
 
+  # Clean up a boost that a restart cut short (see restart_cleanup).
+  - trigger: homeassistant
+    event: start
+    id: restart
+    enabled: !input restart_cleanup
+
 variables:
   climate_entity: !input climate_entity
   boost_fan_mode: !input boost_fan_mode
@@ -336,17 +358,54 @@ variables:
     {{ (t.get('entity_id') or t.get('device_id') or t.get('area_id') or []) | length > 0 }}
 
 conditions:
-  - "{{ bad | count > 0 }}"
-  - >
-    {% if run_condition == 'system_on' %}
-      {{ states(climate_entity) not in ['off', 'unavailable', 'unknown'] }}
-    {% elif run_condition == 'active' %}
-      {{ state_attr(climate_entity, 'hvac_action') in ['heating', 'cooling'] }}
-    {% else %}
-      true
-    {% endif %}
+  - or:
+      # The restart clean-up has its own checks in the actions below.
+      - condition: trigger
+        id: restart
+      - and:
+          - "{{ bad | count > 0 }}"
+          - >
+            {% if run_condition == 'system_on' %}
+              {{ states(climate_entity) not in ['off', 'unavailable', 'unknown'] }}
+            {% elif run_condition == 'active' %}
+              {{ state_attr(climate_entity, 'hvac_action') in ['heating', 'cooling'] }}
+            {% else %}
+              true
+            {% endif %}
 
 actions:
+  # ---- After a restart: put the fan back if a boost was left behind ----
+  - if: "{{ trigger.id == 'restart' }}"
+    then:
+      # Sensors and cloud thermostats can take a while to come back after
+      # a start; deciding on 'unavailable' values would be a guess.
+      - wait_template: >
+          {% set ns = namespace(missing=false) %}
+          {% for c in checks if c.active %}
+            {% for s in c.sensors if not (states(s) | is_number) %}
+              {% set ns.missing = true %}
+            {% endfor %}
+          {% endfor %}
+          {{ has_value(climate_entity) and not ns.missing }}
+        timeout: "00:05:00"
+        continue_on_timeout: false
+      - variables:
+          air_clean: >
+            {% set ns = namespace(bad=false) %}
+            {% for c in checks if c.active %}
+              {% for s in c.sensors if states(s) | is_number and states(s) | float > (c.limit | float) * (1 - clear_margin / 100) %}
+                {% set ns.bad = true %}
+              {% endfor %}
+            {% endfor %}
+            {{ not ns.bad }}
+      - if: "{{ do_reset and air_clean and state_attr(climate_entity, 'fan_mode') == boost_fan_mode }}"
+        then:
+          - action: climate.set_fan_mode
+            target:
+              entity_id: "{{ climate_entity }}"
+            data:
+              fan_mode: "{{ normal_fan_mode }}"
+      - stop: Restart clean-up done
   - if: "{{ use_fan_only }}"
     then:
       - action: climate.set_hvac_mode

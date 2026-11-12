@@ -28,6 +28,11 @@ All blueprints share one version number.
 - Added **Ignore Readings That Don't Match the Sun** (default on).
 - Overlapping runs are dropped quietly instead of logging a warning.
 
+### Indoor Air Helper (HVAC)
+
+- Fixed: a restart in the middle of a boost left the fan on the boost speed
+  for good. New input **Finish a Boost Cut Short by a Restart** (default on).
+
 ## 0.1.0
 
 - Imported the existing blueprints: Adaptive Light Controller, Curtains –
