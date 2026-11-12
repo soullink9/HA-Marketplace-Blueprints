@@ -6,13 +6,15 @@ blueprint:
     based on illuminance and/or sun elevation. Either direction can be
     disabled independently. No helper entities required.
 
-    Includes three optional "outer protections" against missed events:
-    a Home Assistant restart recheck, a periodic safety heartbeat, and
-    an absolute failsafe time. These guard against a missed threshold
-    crossing (e.g. HA restarts after the crossing already happened) or
-    a dead/unavailable sensor.
+    Includes optional "outer protections" against missed events and bad
+    readings: a Home Assistant restart recheck, a periodic safety
+    heartbeat, absolute failsafe times, a dead-sensor fallback to the sun,
+    and a check that ignores light readings the sun says are impossible
+    (for example "dark" at noon from a sensor that stopped reporting).
   domain: automation
   source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/open_close_curtains/open_close_curtains.yaml
+  homeassistant:
+    min_version: 2024.10.0
 
   input:
 
@@ -38,6 +40,9 @@ blueprint:
 
     evening_illuminance_sensor:
       name: (Evening) Illuminance Sensor
+      description: >
+        Optional. Leave empty to close on sun elevation only (turn on the
+        sun option below).
       default: []
       selector:
         entity:
@@ -64,7 +69,10 @@ blueprint:
 
     use_evening_sun_fallback:
       name: (Evening) Also Trigger On Sun Elevation
-      description: Backup trigger in case the illuminance sensor is unavailable.
+      description: >
+        Also close when the sun drops below the elevation below, even if
+        the illuminance sensor still reads bright. If the sensor is dead
+        (see "Treat Sensor As Dead After"), the sun is used anyway.
       default: true
       selector:
         boolean: {}
@@ -108,6 +116,9 @@ blueprint:
 
     morning_illuminance_sensor:
       name: (Morning) Illuminance Sensor
+      description: >
+        Optional. Leave empty to open on sun elevation only (turn on the
+        sun option below).
       default: []
       selector:
         entity:
@@ -134,6 +145,10 @@ blueprint:
 
     use_morning_sun_fallback:
       name: (Morning) Also Trigger On Sun Elevation
+      description: >
+        Also open when the sun rises above the elevation below, even if
+        the illuminance sensor still reads dark. If the sensor is dead
+        (see "Treat Sensor As Dead After"), the sun is used anyway.
       default: true
       selector:
         boolean: {}
@@ -155,6 +170,17 @@ blueprint:
         Never open before this time, even if it's bright/sun is up
         (handy in summer when sunrise is very early).
       default: "06:30:00"
+      selector:
+        time: {}
+
+    morning_not_after:
+      name: (Morning) Latest Allowed Time
+      description: >
+        Sensor, sun, restart and periodic checks only open the curtains
+        between the Earliest Allowed Time and this time. After it, curtains
+        you closed yourself (for glare or privacy) stay closed. The
+        morning failsafe time is not limited by this.
+      default: "12:00:00"
       selector:
         time: {}
 
@@ -201,15 +227,88 @@ blueprint:
       selector:
         boolean: {}
 
+    sensor_stale_minutes:
+      name: Treat Sensor As Dead After (minutes)
+      description: >
+        If an illuminance sensor hasn't reported anything for this long,
+        its last value is ignored and the sun elevation thresholds are
+        used instead. Catches weather stations that stop sending (for
+        example a solar-powered sensor that runs flat overnight) while
+        Home Assistant keeps showing the old reading. 0 = never.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 720
+          unit_of_measurement: minutes
+          mode: box
+
+    sun_sanity_check:
+      name: Ignore Readings That Don't Match the Sun
+      description: >
+        Never close because of a "dark" reading while the sun is higher
+        than 10°, and never open because of a "bright" reading while the
+        sun is lower than -6° (darker than civil twilight). Stops a stuck
+        or covered sensor from closing the curtains at midday or opening
+        them at night. Failsafe times are not affected.
+      default: true
+      selector:
+        boolean: {}
+
 mode: single
+# A periodic check landing while a failsafe is running is simply dropped.
+max_exceeded: silent
 
 variables:
   enable_evening_close: !input enable_evening_close
   enable_morning_open: !input enable_morning_open
-  enable_evening_failsafe: !input enable_evening_failsafe
-  enable_morning_failsafe: !input enable_morning_failsafe
   use_evening_sun_fallback: !input use_evening_sun_fallback
   use_morning_sun_fallback: !input use_morning_sun_fallback
+  evening_threshold: !input evening_illuminance_threshold
+  morning_threshold: !input morning_illuminance_threshold
+  evening_sun: !input evening_sun_elevation
+  morning_sun: !input morning_sun_elevation
+  stale_minutes: !input sensor_stale_minutes
+  sun_sanity: !input sun_sanity_check
+
+  # The sensor inputs default to [] when left empty; turn that into ''.
+  evening_sensor_input: !input evening_illuminance_sensor
+  morning_sensor_input: !input morning_illuminance_sensor
+  evening_sensor: "{{ evening_sensor_input if evening_sensor_input is string else '' }}"
+  morning_sensor: "{{ morning_sensor_input if morning_sensor_input is string else '' }}"
+
+  sun_elev: "{{ state_attr('sun.sun', 'elevation') }}"
+  sun_known: "{{ sun_elev is number }}"
+
+  # A sensor is only trusted if it has a number AND has reported recently.
+  # last_reported moves on every update, even when the value is unchanged,
+  # so a quiet-but-alive sensor isn't mistaken for a dead one.
+  evening_sensor_ok: >
+    {% set st = states[evening_sensor] if evening_sensor else none %}
+    {{ st is not none and st.state | is_number
+       and (stale_minutes | int == 0
+            or (now() - st.last_reported).total_seconds() < stale_minutes | int * 60) }}
+  morning_sensor_ok: >
+    {% set st = states[morning_sensor] if morning_sensor else none %}
+    {{ st is not none and st.state | is_number
+       and (stale_minutes | int == 0
+            or (now() - st.last_reported).total_seconds() < stale_minutes | int * 60) }}
+
+  # Is it dark / bright right now? The sensor decides when it can be
+  # trusted; the sun counts when its option is on, or when a configured
+  # sensor is dead (so a dead sensor never leaves the curtains stuck).
+  is_dark: >
+    {% set by_sensor = evening_sensor_ok and states(evening_sensor) | float < evening_threshold | float %}
+    {% set sun_counts = use_evening_sun_fallback or (evening_sensor != '' and not evening_sensor_ok) %}
+    {% set by_sun = sun_counts and sun_known and sun_elev < evening_sun | float %}
+    {% set sane = not sun_sanity or not sun_known or sun_elev < 10 %}
+    {{ (by_sensor or by_sun) and sane }}
+  is_bright: >
+    {% set by_sensor = morning_sensor_ok and states(morning_sensor) | float > morning_threshold | float %}
+    {% set sun_counts = use_morning_sun_fallback or (morning_sensor != '' and not morning_sensor_ok) %}
+    {% set by_sun = sun_counts and sun_known and sun_elev > morning_sun | float %}
+    {% set sane = not sun_sanity or not sun_known or sun_elev > -6 %}
+    {{ (by_sensor or by_sun) and sane }}
 
 triggers:
   - trigger: numeric_state
@@ -217,6 +316,7 @@ triggers:
     entity_id: !input evening_illuminance_sensor
     below: !input evening_illuminance_threshold
     for: !input evening_below_duration
+    enabled: !input enable_evening_close
 
   - trigger: numeric_state
     id: evening_sun_elevation
@@ -230,6 +330,7 @@ triggers:
     entity_id: !input morning_illuminance_sensor
     above: !input morning_illuminance_threshold
     for: !input morning_above_duration
+    enabled: !input enable_morning_open
 
   - trigger: numeric_state
     id: morning_sun_elevation
@@ -278,6 +379,8 @@ actions:
               entity_id: !input curtains
 
       # ---- EVENING BRANCH: crossing OR recheck confirms it's dark ----
+      # The trigger only wakes this up; is_dark re-checks the current
+      # reading, the dead-sensor fallback and the sun sanity check.
       - conditions:
           - condition: trigger
             id:
@@ -290,22 +393,7 @@ actions:
             entity_id: !input curtains
             state: "open"
             match: any
-          - condition: or
-            conditions:
-              - condition: trigger
-                id:
-                  - evening_illuminance
-                  - evening_sun_elevation
-              - condition: numeric_state
-                entity_id: !input evening_illuminance_sensor
-                below: !input evening_illuminance_threshold
-              - condition: and
-                conditions:
-                  - "{{ use_evening_sun_fallback }}"
-                  - condition: numeric_state
-                    entity_id: sun.sun
-                    attribute: elevation
-                    below: !input evening_sun_elevation
+          - "{{ is_dark }}"
         sequence:
           - action: cover.close_cover
             target:
@@ -326,6 +414,9 @@ actions:
               entity_id: !input curtains
 
       # ---- MORNING BRANCH: crossing OR recheck confirms it's bright ----
+      # Limited to the morning window. Without an end time the periodic
+      # check could reopen curtains any time until midnight, including
+      # right after the evening failsafe closed them.
       - conditions:
           - condition: trigger
             id:
@@ -336,26 +427,12 @@ actions:
           - "{{ enable_morning_open }}"
           - condition: time
             after: !input morning_not_before
+            before: !input morning_not_after
           - condition: state
             entity_id: !input curtains
             state: "closed"
             match: any
-          - condition: or
-            conditions:
-              - condition: trigger
-                id:
-                  - morning_illuminance
-                  - morning_sun_elevation
-              - condition: numeric_state
-                entity_id: !input morning_illuminance_sensor
-                above: !input morning_illuminance_threshold
-              - condition: and
-                conditions:
-                  - "{{ use_morning_sun_fallback }}"
-                  - condition: numeric_state
-                    entity_id: sun.sun
-                    attribute: elevation
-                    above: !input morning_sun_elevation
+          - "{{ is_bright }}"
         sequence:
           - action: cover.open_cover
             target:
