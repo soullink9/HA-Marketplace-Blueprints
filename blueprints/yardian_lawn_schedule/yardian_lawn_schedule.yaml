@@ -1,4 +1,4 @@
-# HA-Marketplace-Blueprints v0.1.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.2.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
   name: Yardian – fail-safe lawn watering
   description: >

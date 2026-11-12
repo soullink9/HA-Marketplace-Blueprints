@@ -2,7 +2,7 @@
 
 All blueprints share one version number.
 
-## Unreleased
+## 0.2.0
 
 ### Adaptive Light Controller
 
