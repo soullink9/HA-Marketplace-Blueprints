@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- HA-Marketplace-Blueprints icon: an automation flow (trigger → condition →
+     action) drawn on blueprint paper. Source for icon.png / icon@2x.png. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2468b4"/>
+      <stop offset="1" stop-color="#123f78"/>
+    </linearGradient>
+    <pattern id="minor" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="2"/>
+    </pattern>
+    <pattern id="major" width="128" height="128" patternUnits="userSpaceOnUse">
+      <path d="M128 0H0V128" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="3"/>
+    </pattern>
+    <clipPath id="tile"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#paper)"/>
+    <rect width="512" height="512" fill="url(#minor)"/>
+    <rect width="512" height="512" fill="url(#major)"/>
+  </g>
+
+  <g fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <!-- connectors -->
+    <path d="M186 186 L210 210"/>
+    <path d="M302 302 L322 322"/>
+    <!-- trigger -->
+    <circle cx="146" cy="146" r="56"/>
+    <!-- condition -->
+    <path d="M256 186 L326 256 L256 326 L186 256 Z"/>
+    <!-- action -->
+    <rect x="316" y="316" width="96" height="96" rx="22" fill="#ffffff"/>
+  </g>
+  <!-- trigger spark and action check, in paper blue so they read as cut-outs -->
+  <circle cx="146" cy="146" r="18" fill="#ffffff"/>
+  <path d="M340 366 L357 383 L389 349" fill="none" stroke="#174c8c" stroke-width="16"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

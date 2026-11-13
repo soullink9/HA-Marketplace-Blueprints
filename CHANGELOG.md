@@ -2,6 +2,12 @@
 
 All blueprints share one version number.
 
+## Unreleased
+
+- Added the repo icon (`brand/icon.svg`, with `icon.png` at 256 px and
+  `icon@2x.png` at 512 px) and shown it on the front page. No blueprint
+  changes.
+
 ## 0.2.1
 
 ### Indoor Air Helper (HVAC)

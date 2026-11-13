@@ -1,3 +1,5 @@
+<img src="brand/icon.png" alt="HA-Marketplace-Blueprints icon" width="128" align="right">
+
 # Home Assistant Blueprints
 
 My Home Assistant automation blueprints, one folder each. Every blueprint
