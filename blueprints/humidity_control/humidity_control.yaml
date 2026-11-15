@@ -1,4 +1,4 @@
-# HA-Marketplace-Blueprints v0.2.1 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.3.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
   name: Humidity Automation (Fan Control + Shower Detection)
   description: >
@@ -9,335 +9,400 @@ blueprint:
     Includes simple explanations for every option, and optional
     manual-override protection with no helper entities required.
   domain: automation
+  author: soullink9
   source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/humidity_control/humidity_control.yaml
   homeassistant:
-    min_version: 2024.10.0
+    min_version: "2026.11.0"
 
   input:
+    section_sensor:
+      name: "Sensor"
+      icon: mdi:water-percent
+      input:
+        humidity_sensor:
+          name: Humidity Sensor
+          description: >
+            Select the humidity sensor for this room. The automation reacts to
+            every change in this sensor's value. Readings that are unavailable
+            or unknown are ignored.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: humidity
 
-    ############################################################################
-    # SECTION 1 — SENSOR
-    ############################################################################
-    humidity_sensor:
-      name: Humidity Sensor
-      description: >
-        Select the humidity sensor for this room. The automation reacts to
-        every change in this sensor's value. Readings that are unavailable
-        or unknown are ignored.
-      selector:
-        entity:
-          domain: sensor
+        deadband:
+          name: Buffer Zone (Deadband) (%)
+          description: >
+            Prevents rapid on/off cycling. Example: If high threshold is 60%
+            and deadband is 2%, the fan won't turn off until humidity drops
+            below 58%.
+          default: 2
+          selector:
+            number:
+              min: 0
+              max: 20
+              step: 0.5
 
-    deadband:
-      name: Buffer Zone (Deadband) (%)
-      description: >
-        Prevents rapid on/off cycling. Example: If high threshold is 60%
-        and deadband is 2%, the fan won't turn off until humidity drops
-        below 58%.
-      default: 2
-      selector:
-        number:
-          min: 0
-          max: 20
-          step: 0.5
+    section_high:
+      name: "High humidity (fan)"
+      icon: mdi:fan
+      input:
+        enable_high:
+          name: Turn Fan On When Humidity Gets High
+          description: >
+            Enable this if you want the fan to turn on when humidity rises
+            above the high threshold.
+          default: false
+          selector:
+            boolean: {}
 
-    ############################################################################
-    # SECTION 2 — HIGH HUMIDITY (FAN)
-    ############################################################################
-    enable_high:
-      name: Turn Fan On When Humidity Gets High
-      description: >
-        Enable this if you want the fan to turn on when humidity rises
-        above the high threshold.
-      default: false
-      selector:
-        boolean: {}
+        high_threshold:
+          visible:
+            field: enable_high
+            value: true
+          name: High Humidity Level (%)
+          description: >
+            When humidity rises above this value, the fan will turn on after
+            the required duration.
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 100
 
-    high_threshold:
-      name: High Humidity Level (%)
-      description: >
-        When humidity rises above this value, the fan will turn on after
-        the required duration.
-      default: 60
-      selector:
-        number:
-          min: 0
-          max: 100
+        high_duration:
+          visible:
+            field: enable_high
+            value: true
+          name: How Long Humidity Must Stay High (minutes)
+          description: >
+            Prevents false triggers. Humidity must stay above the high threshold
+            for this long before the fan turns on.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 120
 
-    high_duration:
-      name: How Long Humidity Must Stay High (minutes)
-      description: >
-        Prevents false triggers. Humidity must stay above the high threshold
-        for this long before the fan turns on.
-      default: 0
-      selector:
-        number:
-          min: 0
-          max: 120
+        high_action:
+          visible:
+            field: enable_high
+            value: true
+          name: What To Do When Humidity Gets High
+          description: >
+            Actions to run when humidity stays above the high threshold long
+            enough. Usually: turn on the fan.
+          default: []
+          selector:
+            action: {}
 
-    high_action:
-      name: What To Do When Humidity Gets High
-      description: >
-        Actions to run when humidity stays above the high threshold long
-        enough. Usually: turn on the fan.
-      default: []
-      selector:
-        action: {}
+        high_normal_duration:
+          visible:
+            field: enable_high
+            value: true
+          name: How Long Humidity Must Stay Normal Before Turning Off (minutes)
+          description: >
+            Humidity must stay below the exit threshold (or back near ambient)
+            for this long before the fan turns off. Any reading back above it
+            restarts the wait.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 120
 
-    high_normal_duration:
-      name: How Long Humidity Must Stay Normal Before Turning Off (minutes)
-      description: >
-        Humidity must stay below the exit threshold (or back near ambient)
-        for this long before the fan turns off. Any reading back above it
-        restarts the wait.
-      default: 5
-      selector:
-        number:
-          min: 0
-          max: 120
+        high_normal_action:
+          visible:
+            field: enable_high
+            value: true
+          name: What To Do When Humidity Returns to Normal
+          description: >
+            Actions to run when humidity drops back to normal. Usually: turn off
+            the fan.
+          default: []
+          selector:
+            action: {}
 
-    high_normal_action:
-      name: What To Do When Humidity Returns to Normal
-      description: >
-        Actions to run when humidity drops back to normal. Usually: turn off
-        the fan.
-      default: []
-      selector:
-        action: {}
+        ambient_sensor:
+          visible:
+            field: enable_high
+            value: true
+          name: "Ambient Humidity Sensor (optional)"
+          description: >
+            A humidity sensor somewhere else INSIDE the house (hallway,
+            bedroom, or your thermostat). When set, the high-humidity fan only
+            turns on if this room is noticeably more humid than the rest of the
+            house — so a muggy day won't turn the fan on. Avoid outdoor
+            sensors: cold outdoor air reads high % but holds little moisture.
+            Select exactly one entity. Leave empty to disable the blocker. If
+            this sensor goes unavailable, the blocker is skipped and normal
+            threshold behavior is used.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: sensor
+                  device_class: humidity
 
-    ############################################################################
-    # SECTION 2B — AMBIENT HUMIDITY BLOCKER (optional)
-    ############################################################################
-    ambient_sensor:
-      name: "Ambient Humidity Sensor (optional)"
-      description: >
-        A humidity sensor somewhere else INSIDE the house (hallway,
-        bedroom, or your thermostat). When set, the high-humidity fan only
-        turns on if this room is noticeably more humid than the rest of the
-        house — so a muggy day won't turn the fan on. Avoid outdoor
-        sensors: cold outdoor air reads high % but holds little moisture.
-        Select exactly one entity. Leave empty to disable the blocker. If
-        this sensor goes unavailable, the blocker is skipped and normal
-        threshold behavior is used.
-      default: []
-      selector:
-        entity:
-          domain: sensor
-          multiple: true
+        ambient_min_difference:
+          visible:
+            field: enable_high
+            value: true
+          name: "Ambient Blocker: Required Difference (%)"
+          description: >
+            How much more humid this room must be than the ambient sensor
+            before the fan turns on. Example: ambient 62%, difference 10% —
+            the fan won't turn on unless this room reaches 72% (and is above
+            the High Humidity Level). The fan also turns off once the room
+            falls back within (difference − deadband) of ambient, so it can't
+            get stuck running all day when the whole house is humid. Shower
+            detection is not affected by this blocker.
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 50
+              step: 0.5
 
-    ambient_min_difference:
-      name: "Ambient Blocker: Required Difference (%)"
-      description: >
-        How much more humid this room must be than the ambient sensor
-        before the fan turns on. Example: ambient 62%, difference 10% —
-        the fan won't turn on unless this room reaches 72% (and is above
-        the High Humidity Level). The fan also turns off once the room
-        falls back within (difference − deadband) of ambient, so it can't
-        get stuck running all day when the whole house is humid. Shower
-        detection is not affected by this blocker.
-      default: 10
-      selector:
-        number:
-          min: 0
-          max: 50
-          step: 0.5
+    section_low:
+      name: "Low humidity (e.g. humidifier)"
+      icon: mdi:air-humidifier
+      collapsed: true
+      input:
+        enable_low:
+          name: Turn Something On When Humidity Gets Too Low
+          description: >
+            Enable this if you want to run actions when humidity drops below
+            the low threshold (e.g., humidifier control).
+          default: false
+          selector:
+            boolean: {}
 
-    ############################################################################
-    # SECTION 3 — LOW HUMIDITY (E.G. HUMIDIFIER)
-    ############################################################################
-    enable_low:
-      name: Turn Something On When Humidity Gets Too Low
-      description: >
-        Enable this if you want to run actions when humidity drops below
-        the low threshold (e.g., humidifier control).
-      default: false
-      selector:
-        boolean: {}
+        low_threshold:
+          visible:
+            field: enable_low
+            value: true
+          name: Low Humidity Level (%)
+          description: >
+            When humidity drops below this value, the low-humidity action will
+            run after the required duration.
+          default: 30
+          selector:
+            number:
+              min: 0
+              max: 100
 
-    low_threshold:
-      name: Low Humidity Level (%)
-      description: >
-        When humidity drops below this value, the low-humidity action will
-        run after the required duration.
-      default: 30
-      selector:
-        number:
-          min: 0
-          max: 100
+        low_duration:
+          visible:
+            field: enable_low
+            value: true
+          name: How Long Humidity Must Stay Low (minutes)
+          description: >
+            Prevents false triggers. Humidity must stay below the low threshold
+            for this long before actions run.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 120
 
-    low_duration:
-      name: How Long Humidity Must Stay Low (minutes)
-      description: >
-        Prevents false triggers. Humidity must stay below the low threshold
-        for this long before actions run.
-      default: 0
-      selector:
-        number:
-          min: 0
-          max: 120
+        low_action:
+          visible:
+            field: enable_low
+            value: true
+          name: What To Do When Humidity Gets Too Low
+          description: >
+            Actions to run when humidity stays below the low threshold long
+            enough. Usually: turn on a humidifier.
+          default: []
+          selector:
+            action: {}
 
-    low_action:
-      name: What To Do When Humidity Gets Too Low
-      description: >
-        Actions to run when humidity stays below the low threshold long
-        enough. Usually: turn on a humidifier.
-      default: []
-      selector:
-        action: {}
+        low_normal_duration:
+          visible:
+            field: enable_low
+            value: true
+          name: How Long Humidity Must Stay Normal Before Turning Off (minutes)
+          description: >
+            Humidity must stay above the exit threshold for this long before the
+            low-humidity "normal" actions run. Any reading back below it
+            restarts the wait.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 120
 
-    low_normal_duration:
-      name: How Long Humidity Must Stay Normal Before Turning Off (minutes)
-      description: >
-        Humidity must stay above the exit threshold for this long before the
-        low-humidity "normal" actions run. Any reading back below it
-        restarts the wait.
-      default: 5
-      selector:
-        number:
-          min: 0
-          max: 120
+        low_normal_action:
+          visible:
+            field: enable_low
+            value: true
+          name: What To Do When Humidity Returns to Normal
+          description: >
+            Actions to run when humidity returns to normal after being too low.
+          default: []
+          selector:
+            action: {}
 
-    low_normal_action:
-      name: What To Do When Humidity Returns to Normal
-      description: >
-        Actions to run when humidity returns to normal after being too low.
-      default: []
-      selector:
-        action: {}
+    section_shower:
+      name: "Shower detection"
+      icon: mdi:shower-head
+      collapsed: true
+      input:
+        enable_shower:
+          name: Detect Showers Automatically (Fast Humidity Rise)
+          description: >
+            Detects showers by looking for a rapid rise in humidity over a short
+            time window. Useful when high humidity alone isn't enough. Works with
+            sensors that report in small steps: the rise is measured from the
+            reading where it started climbing, not just between two readings.
+            Runs independently of the high-humidity side. Skipped while the
+            Manual Override high-side entity (if set) is already on.
+          default: false
+          selector:
+            boolean: {}
 
-    ############################################################################
-    # SECTION 4 — SHOWER DETECTION
-    ############################################################################
-    enable_shower:
-      name: Detect Showers Automatically (Fast Humidity Rise)
-      description: >
-        Detects showers by looking for a rapid rise in humidity over a short
-        time window. Useful when high humidity alone isn't enough. Works with
-        sensors that report in small steps: the rise is measured from the
-        reading where it started climbing, not just between two readings.
-        Runs independently of the high-humidity side. Skipped while the
-        Manual Override high-side entity (if set) is already on.
-      default: false
-      selector:
-        boolean: {}
+        shower_rise_amount:
+          visible:
+            field: enable_shower
+            value: true
+          name: How Much Humidity Must Rise (%)
+          description: >
+            The minimum increase in humidity needed to count as a shower.
+          default: 8
+          selector:
+            number:
+              min: 1
+              max: 30
+              step: 0.5
 
-    shower_rise_amount:
-      name: How Much Humidity Must Rise (%)
-      description: >
-        The minimum increase in humidity needed to count as a shower.
-      default: 8
-      selector:
-        number:
-          min: 1
-          max: 30
-          step: 0.5
+        shower_rise_window:
+          visible:
+            field: enable_shower
+            value: true
+          name: How Fast the Rise Must Happen (minutes)
+          description: >
+            The humidity must rise by the required amount within this many
+            minutes to count as a shower.
+          default: 2
+          selector:
+            number:
+              min: 1
+              max: 30
+              step: 1
 
-    shower_rise_window:
-      name: How Fast the Rise Must Happen (minutes)
-      description: >
-        The humidity must rise by the required amount within this many
-        minutes to count as a shower.
-      default: 2
-      selector:
-        number:
-          min: 1
-          max: 30
-          step: 1
+        shower_action:
+          visible:
+            field: enable_shower
+            value: true
+          name: What To Do When a Shower Is Detected
+          description: >
+            Actions to run when a shower is detected. Usually: turn on the fan.
+          default: []
+          selector:
+            action: {}
 
-    shower_action:
-      name: What To Do When a Shower Is Detected
-      description: >
-        Actions to run when a shower is detected. Usually: turn on the fan.
-      default: []
-      selector:
-        action: {}
+    section_override:
+      name: "Manual override protection"
+      icon: mdi:hand-back-right
+      collapsed: true
+      input:
+        enable_manual_override_protection:
+          name: Enable Manual Override Protection
+          description: >
+            When enabled, if you (or a physical switch/app) manually change the
+            entity being controlled, the automation temporarily backs off
+            instead of immediately undoing your manual change. This reads the
+            entity's own built-in state history — no helper entities needed.
+            Applies to both the high-humidity (fan) side and the low-humidity
+            side independently, using the entities selected below. Checked at
+            the moment an automatic ON/OFF is about to run.
+          default: false
+          selector:
+            boolean: {}
 
-    ############################################################################
-    # SECTION 5 — MANUAL OVERRIDE PROTECTION (no helper entities required)
-    ############################################################################
-    enable_manual_override_protection:
-      name: Enable Manual Override Protection
-      description: >
-        When enabled, if you (or a physical switch/app) manually change the
-        entity being controlled, the automation temporarily backs off
-        instead of immediately undoing your manual change. This reads the
-        entity's own built-in state history — no helper entities needed.
-        Applies to both the high-humidity (fan) side and the low-humidity
-        side independently, using the entities selected below. Checked at
-        the moment an automatic ON/OFF is about to run.
-      default: false
-      selector:
-        boolean: {}
+        monitored_high_entity:
+          name: "Manual Override: High-Side Entity (e.g. fan)"
+          description: >
+            The entity that high_action/high_normal_action actually control
+            (usually your fan). Required if Manual Override Protection is
+            enabled and you want it to apply to the high-humidity side. Select
+            exactly one entity. Leave empty to skip override protection for
+            this side.
+          default: []
+          selector:
+            entity:
+              multiple: true
 
-    monitored_high_entity:
-      name: "Manual Override: High-Side Entity (e.g. fan)"
-      description: >
-        The entity that high_action/high_normal_action actually control
-        (usually your fan). Required if Manual Override Protection is
-        enabled and you want it to apply to the high-humidity side. Select
-        exactly one entity. Leave empty to skip override protection for
-        this side.
-      default: []
-      selector:
-        entity:
-          multiple: true
+        monitored_low_entity:
+          visible:
+            field: enable_manual_override_protection
+            value: true
+          name: "Manual Override: Low-Side Entity (e.g. humidifier)"
+          description: >
+            The entity that low_action/low_normal_action actually control
+            (usually your humidifier). Required if Manual Override Protection
+            is enabled and you want it to apply to the low-humidity side.
+            Select exactly one entity. Leave empty to skip override protection
+            for this side.
+          default: []
+          selector:
+            entity:
+              multiple: true
 
-    monitored_low_entity:
-      name: "Manual Override: Low-Side Entity (e.g. humidifier)"
-      description: >
-        The entity that low_action/low_normal_action actually control
-        (usually your humidifier). Required if Manual Override Protection
-        is enabled and you want it to apply to the low-humidity side.
-        Select exactly one entity. Leave empty to skip override protection
-        for this side.
-      default: []
-      selector:
-        entity:
-          multiple: true
+        override_direction:
+          visible:
+            field: enable_manual_override_protection
+            value: true
+          name: Override Protection Direction
+          description: >
+            Which manual changes should be protected, applied to both sides.
+            "Both" means a manual ON blocks the next automatic OFF, and a
+            manual OFF blocks the next automatic ON, each for the duration
+            below.
+          default: "both"
+          selector:
+            select:
+              options:
+                - label: "Both directions"
+                  value: "both"
+                - label: "Manual ON blocks auto-OFF only"
+                  value: "block_off_after_manual_on"
+                - label: "Manual OFF blocks auto-ON only"
+                  value: "block_on_after_manual_off"
 
-    override_direction:
-      name: Override Protection Direction
-      description: >
-        Which manual changes should be protected, applied to both sides.
-        "Both" means a manual ON blocks the next automatic OFF, and a
-        manual OFF blocks the next automatic ON, each for the duration
-        below.
-      default: "both"
-      selector:
-        select:
-          options:
-            - label: "Both directions"
-              value: "both"
-            - label: "Manual ON blocks auto-OFF only"
-              value: "block_off_after_manual_on"
-            - label: "Manual OFF blocks auto-ON only"
-              value: "block_on_after_manual_off"
+        override_duration_minutes:
+          visible:
+            field: enable_manual_override_protection
+            value: true
+          name: Override Protection Duration (minutes)
+          description: >
+            How long a manual change should be respected before the automation
+            resumes normal behavior. Measured from the moment the entity was
+            manually changed.
+          default: 15
+          selector:
+            number:
+              min: 1
+              max: 180
+              mode: slider
+              unit_of_measurement: minutes
 
-    override_duration_minutes:
-      name: Override Protection Duration (minutes)
-      description: >
-        How long a manual change should be respected before the automation
-        resumes normal behavior. Measured from the moment the entity was
-        manually changed.
-      default: 15
-      selector:
-        number:
-          min: 1
-          max: 180
-          mode: slider
-          unit_of_measurement: minutes
-
-    ############################################################################
-    # SECTION 6 — DEBUGGING
-    ############################################################################
-    enable_debug:
-      name: Debug Logging (Optional)
-      description: >
-        When enabled, logs shower detection, ambient-blocker and
-        manual-override decisions to help with tuning.
-      default: false
-      selector:
-        boolean: {}
+    section_debug:
+      name: "Debugging"
+      icon: mdi:bug-outline
+      collapsed: true
+      input:
+        enable_debug:
+          name: Debug Logging (Optional)
+          description: >
+            When enabled, logs shower detection, ambient-blocker and
+            manual-override decisions to help with tuning.
+          default: false
+          selector:
+            boolean: {}
 
 mode: parallel
 # Shower detection keeps a short-lived run per rising reading (see below),
@@ -349,9 +414,6 @@ max_exceeded: silent
 # TRIGGERS
 # "Must stay high/normal for N minutes" is done by the triggers' own `for:`,
 # so Home Assistant restarts the timer whenever the condition breaks.
-# (Before, every reading started its own delayed run that only re-checked the
-# value at the end — not "stayed", and a sensor reporting every few seconds
-# hit the run limit.)
 ##############################################################################
 trigger_variables:
   t_sensor: !input humidity_sensor

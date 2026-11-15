@@ -37,7 +37,7 @@ The debug log line shows `lux_ok`, `lux_use_sun` and `lux_value`.
 Manual-override protection treats a change with no parent context as
 "manual" (physical switches look like this). Runs started by a clock —
 Self-Healing every 5 minutes and the Time Window, Quiet Hours and OFF Block
-Window times — have no parent context either, so the automation's own
+Window times (only the ones that are turned on) — have no parent context either, so the automation's own
 clock-driven ON/OFF used to count as manual and block the opposite action
 for the whole Override Duration. Changes in the first 10 seconds of those
 minutes are now treated as the automation's own.

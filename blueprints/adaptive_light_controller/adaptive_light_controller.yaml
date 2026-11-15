@@ -1,4 +1,4 @@
-# HA-Marketplace-Blueprints v0.2.1 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.3.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
   name: Adaptive Light Controller
   description: >
@@ -17,7 +17,10 @@ blueprint:
     can be targeted — see the note on Section 1 for converting a plain
     switch into a light entity.
   domain: automation
+  author: soullink9
   source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/adaptive_light_controller/adaptive_light_controller.yaml
+  homeassistant:
+    min_version: "2026.11.0"
 
   input:
 
@@ -75,10 +78,11 @@ blueprint:
           selector:
             entity:
               multiple: true
-              domain: binary_sensor
-              device_class:
-                - occupancy
-                - presence
+              filter:
+                - domain: binary_sensor
+                  device_class:
+                    - occupancy
+                    - presence
 
         presence_off_delay:
           name: Presence OFF Delay (minutes)
@@ -116,6 +120,9 @@ blueprint:
             boolean: {}
 
         on_time:
+          visible:
+            field: time_window_enabled
+            value: true
           name: Time Window Start
           description: >
             Clock time each day when "time favors ON" begins. Only used
@@ -125,6 +132,9 @@ blueprint:
             time: {}
 
         off_time:
+          visible:
+            field: time_window_enabled
+            value: true
           name: Time Window End
           description: >
             Clock time each day when "time favors OFF" begins (i.e.
@@ -192,10 +202,14 @@ blueprint:
           selector:
             entity:
               multiple: true
-              domain: sensor
-              device_class: illuminance
+              filter:
+                - domain: sensor
+                  device_class: illuminance
 
         lux_on_threshold:
+          visible:
+            field: lux_enabled
+            value: true
           name: Lux ON Threshold
           description: At or below this reading, brightness counts as wanting lights ON.
           default: 50
@@ -205,6 +219,9 @@ blueprint:
               max: 2000
 
         lux_off_threshold:
+          visible:
+            field: lux_enabled
+            value: true
           name: Lux OFF Threshold
           description: >
             At or above this reading, brightness counts as wanting
@@ -235,6 +252,9 @@ blueprint:
               unit_of_measurement: minutes
 
         lux_fallback_to_sun:
+          visible:
+            field: lux_enabled
+            value: true
           name: Use Sun Position When the Lux Sensor Is Dead
           description: >
             When the brightness sensor is unavailable or dead (see above),
@@ -272,7 +292,7 @@ blueprint:
             completely). "Sun only" — turns on/off purely by the sun's
             elevation; your Time Window is ignored. "Lux only" — turns
             on/off purely by the brightness sensor reading; both Time
-            and Sun are ignored (this is what you're using now).
+            and Sun are ignored.
             "Sun AND Lux must both agree" — ON only when both the sun
             angle and the lux reading say it's dark, OFF only when both
             say it's bright; Time is ignored. "Time OR (Sun AND Lux)" —
@@ -357,6 +377,9 @@ blueprint:
             boolean: {}
 
         quiet_hours_start:
+          visible:
+            field: use_circadian
+            value: true
           name: Quiet Hours Start
           description: >
             A separate, clock-based override — not tied to the sun.
@@ -371,6 +394,9 @@ blueprint:
             time: {}
 
         quiet_hours_end:
+          visible:
+            field: use_circadian
+            value: true
           name: Quiet Hours End
           description: End of the Quiet Hours override described above.
           default: "06:00:00"
@@ -378,6 +404,9 @@ blueprint:
             time: {}
 
         day_brightness:
+          visible:
+            field: use_circadian
+            value: true
           name: Daytime Brightness (%)
           description: >
             Brightness used when the sun is highest (solar noon / full
@@ -392,6 +421,9 @@ blueprint:
               mode: slider
 
         quiet_hours_brightness:
+          visible:
+            field: use_circadian
+            value: true
           name: Quiet Hours Brightness (%)
           description: >
             Brightness used once the sun is below the horizon, AND the
@@ -407,6 +439,9 @@ blueprint:
               mode: slider
 
         day_kelvin:
+          visible:
+            field: use_circadian
+            value: true
           name: Daytime Color Temperature (K)
           description: >
             Color temperature when the sun is highest — higher is
@@ -421,6 +456,9 @@ blueprint:
               mode: slider
 
         quiet_hours_kelvin:
+          visible:
+            field: use_circadian
+            value: true
           name: Quiet Hours Color Temperature (K)
           description: >
             Color temperature once the sun is below the horizon, and
@@ -434,6 +472,9 @@ blueprint:
               mode: slider
 
         circadian_transition_seconds:
+          visible:
+            field: use_circadian
+            value: true
           name: Transition Time (seconds)
           description: >
             How long lights that are already on take to fade to a new
@@ -471,13 +512,17 @@ blueprint:
             boolean: {}
 
         media_entities:
+          visible:
+            field: enable_media_guard
+            value: true
           name: Media Player Entities
           description: The media player(s) watched for the media guard above. Only used if enabled.
           default: []
           selector:
             entity:
               multiple: true
-              domain: media_player
+              filter:
+                - domain: media_player
 
         min_lux_keep_on:
           name: Minimum Lux to Keep ON
@@ -507,6 +552,9 @@ blueprint:
             boolean: {}
 
         off_block_start:
+          visible:
+            field: enable_off_block_window
+            value: true
           name: OFF Block Window Start
           description: Start of the window during which automatic OFF is blocked. Only used if enabled above.
           default: "00:00:00"
@@ -514,6 +562,9 @@ blueprint:
             time: {}
 
         off_block_end:
+          visible:
+            field: enable_off_block_window
+            value: true
           name: OFF Block Window End
           description: >
             End of the block window. The instant this time hits, the automation immediately checks presence/guards and turns OFF if clear. If that one check is itself blocked by something (media playing, manual override, a block entity, etc.) it won't retry on its own — Self-Healing in Section 10 is what keeps retrying every 5 minutes after that until it succeeds.
@@ -544,6 +595,9 @@ blueprint:
             boolean: {}
 
         override_direction:
+          visible:
+            field: enable_manual_override_protection
+            value: true
           name: Override Protection Direction
           description: >
             Which manual changes get protected: a manual ON blocking the
@@ -563,6 +617,9 @@ blueprint:
                   value: "block_on_after_manual_off"
 
         override_duration_minutes:
+          visible:
+            field: enable_manual_override_protection
+            value: true
           name: Override Protection Duration (minutes)
           description: >
             How long a manual change is respected before the automation
@@ -596,9 +653,10 @@ blueprint:
           selector:
             entity:
               multiple: true
-              domain:
-                - binary_sensor
-                - input_boolean
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
 
         block_auto_off_entities:
           name: Entities That Block Auto-OFF (optional)
@@ -610,9 +668,10 @@ blueprint:
           selector:
             entity:
               multiple: true
-              domain:
-                - binary_sensor
-                - input_boolean
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
 
     section_10_self_healing:
       name: "10 · Self-Healing / Schedule"
@@ -898,7 +957,7 @@ variables:
     {% endif %}
 
   preset_on: >
-    {% set p = preset_choice if preset_choice != 'auto' else 'time_or_sun_and_lux' %}
+    {% set p = preset_choice %}
     {{ (
       (p == 'time_only' and time_wants_on) or
       (p == 'lux_only' and lux_wants_on) or
@@ -909,7 +968,7 @@ variables:
     ) | bool }}
 
   preset_off: >
-    {% set p = preset_choice if preset_choice != 'auto' else 'time_or_sun_and_lux' %}
+    {% set p = preset_choice %}
     {{ (
       (p == 'time_only' and time_wants_off) or
       (p == 'lux_only' and lux_wants_off) or
@@ -1008,7 +1067,10 @@ variables:
   # ---------------------------------------------------------------------------
   clock_trigger_minutes: >
     {% set ns = namespace(m=[]) %}
-    {% for t in [on_time, off_time, quiet_hours_start, quiet_hours_end, off_block_end_var] %}
+    {% set times = ([on_time, off_time] if time_window_enabled else [])
+         + ([quiet_hours_start, quiet_hours_end] if use_circadian else [])
+         + ([off_block_end_var] if enable_off_block_window_var else []) %}
+    {% for t in times %}
       {% set ns.m = ns.m + [(t | string)[:5]] %}
     {% endfor %}
     {{ ns.m }}

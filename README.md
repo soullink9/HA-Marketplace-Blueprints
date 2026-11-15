@@ -6,6 +6,10 @@ My Home Assistant automation blueprints, one folder each. Every blueprint
 imports straight from GitHub and can be updated later with **Re-import
 blueprint**.
 
+**Requires Home Assistant 2026.11 or newer.** The blueprints are built for
+the current release only and use its newer features, such as settings that
+appear only when they apply.
+
 ## Disclosure
 
 These blueprints are written and maintained by me with the help of AI

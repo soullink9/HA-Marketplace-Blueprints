@@ -9,6 +9,13 @@
 | Z2M Button | [z2m_button.md](z2m_button.md) |
 | Yardian – Fail-safe Lawn Watering | [yardian_lawn_schedule.md](yardian_lawn_schedule.md) |
 
+## Requirements
+
+Home Assistant 2026.11 or newer. Every blueprint sets this as its
+`min_version`, so older versions refuse to import it with a clear message.
+The blueprints are built only for the current release, so this minimum
+goes up when a release uses a newer Home Assistant feature.
+
 ## Installing
 
 Use the **Import blueprint** button for the blueprint on the
@@ -26,6 +33,13 @@ use it pick up the new version after the re-import; their settings are kept.
 
 If a release adds a new input, it always has a default, so existing
 automations keep working without being edited.
+
+## Settings that only show when they apply
+
+Settings that depend on another one, such as the Quiet Hours values when
+Circadian Brightness is off, are hidden until they matter. A hidden setting
+goes back to its default and is ignored, so turning a feature off and on
+again resets its settings to the defaults.
 
 ### Moving an existing copy over to GitHub updates
 

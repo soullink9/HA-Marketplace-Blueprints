@@ -2,11 +2,61 @@
 
 All blueprints share one version number.
 
-## Unreleased
+## 0.3.0
 
+Built for Home Assistant 2026.11. Older versions are no longer supported.
+
+### All blueprints
+
+- **Breaking:** every blueprint now needs Home Assistant 2026.11 or newer
+  (`min_version: 2026.11.0`). Adaptive Light Controller had no minimum
+  before.
+- Settings that only matter when another one is on are hidden until then,
+  using the new conditional inputs in 2026.11. A hidden setting goes back
+  to its default. Every hidden setting was already ignored in that case,
+  so existing automations behave the same.
+- Entity and device pickers use the current `filter:` form.
+- Added `author` to each blueprint.
 - Added the repo icon (`brand/icon.svg`, with `icon.png` at 256 px and
-  `icon@2x.png` at 512 px) and shown it on the front page. No blueprint
-  changes.
+  `icon@2x.png` at 512 px) and shown it on the front page.
+
+### Adaptive Light Controller
+
+- Hidden until they apply: Time Window times, Lux ON/OFF thresholds and the
+  dead-sensor sun fallback, all Circadian settings, Media Player Entities,
+  OFF Block Window times, and the Manual Override direction and duration.
+  The lux sensor and Treat Lux Sensor As Dead After always show, because
+  Minimum Lux to Keep ON uses them too.
+- The own-clock check for manual override now only counts the Time Window,
+  Quiet Hours and OFF Block Window times that are turned on.
+- Removed the fallback for the old `auto` Ambient Logic Preset value. An
+  automation still set to `auto` must pick a preset again.
+
+### Curtains – Morning Open / Night Close
+
+- Settings are grouped into Curtains, Evening close, Morning open and
+  Protections. The Evening and Morning groups hide when that side is off,
+  and each failsafe time hides until its failsafe is on.
+
+### Indoor Air Helper (HVAC)
+
+- Each pollutant's sensors and limit hide until it is turned on. Fallback
+  Fan Speed and Finish a Boost Cut Short by a Restart hide when Return Fan
+  Afterwards is off. Switch to Fan Only hides unless When to Boost is
+  "Any time".
+
+### Humidity Automation
+
+- Settings are grouped into Sensor, High humidity, Low humidity, Shower
+  detection, Manual override protection and Debugging, and each side's
+  settings hide until it is turned on. The fan entity for manual override
+  always shows, because shower detection uses it too.
+- The humidity and ambient sensor pickers only list humidity sensors.
+
+### Yardian – Fail-safe Lawn Watering
+
+- Finish This Long Before Sunrise shows only in sunrise mode, and Fixed
+  Start Time only in fixed mode.
 
 ## 0.2.1
 
