@@ -4,6 +4,20 @@ Each release has a repo version (the git tag). A blueprint's own version
 only changes in releases that change that blueprint, so it shows the
 release it last changed in.
 
+## 0.7.0
+
+### Bathroom Fan (v0.7.0)
+
+- The fan picked at the top is now what gets switched. Shower detection,
+  high humidity and turning off each have a choice: switch the fan, switch
+  it and run your own actions, or only run your own actions (for example
+  to turn on the AC instead). Your actions only show when you pick a
+  choice that uses them.
+- The humidifier works the same way. Pick it at the top of its section.
+- Check after re-importing: the default is to switch the fan. If your
+  actions did more than turn the fan on or off, pick "… and run my
+  actions" or "Only run my own actions" where needed.
+
 ## 0.6.1
 
 - Fixed: release 0.6.0 also raised the version shown on the five

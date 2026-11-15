@@ -1,8 +1,8 @@
-# HA-Marketplace-Blueprints v0.6.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.7.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Bathroom Fan – Humidity and Shower Control · v0.6.0
+  name: Bathroom Fan – Humidity and Shower Control · v0.7.0
   description: >
-    **Version 0.6.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.7.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
     Runs the bathroom fan when you shower or the air gets humid, and turns
@@ -59,9 +59,9 @@ blueprint:
         monitored_high_entity:
           name: Fan
           description: >-
-            The fan (or light/fan) your actions control. Recommended: the
-            automation then knows when it's already on and only turns off a
-            fan it turned on.
+            The fan (or light/fan combo) to switch. Each section below can
+            also run your own actions, for example to turn on the AC. Needed
+            unless every section runs only your own actions.
           default: []
           selector:
             entity:
@@ -96,10 +96,25 @@ blueprint:
         field: enable_shower
         value: true
       input:
-        shower_action:
+        shower_fan_mode:
           name: When a shower starts
-          description: >-
-            Usually: turn on the fan.
+          default: device
+          selector:
+            select:
+              options:
+              - label: Turn on the fan
+                value: device
+              - label: Turn on the fan and run my actions
+                value: both
+              - label: Only run my own actions
+                value: actions
+
+        shower_action:
+          name: My actions
+          visible:
+            field: shower_fan_mode
+            operator: not_eq
+            value: device
           default: []
           selector:
             action: {}
@@ -133,10 +148,25 @@ blueprint:
         field: enable_high
         value: true
       input:
-        high_action:
+        high_fan_mode:
           name: When humidity is high
-          description: >-
-            Usually: turn on the fan.
+          default: device
+          selector:
+            select:
+              options:
+              - label: Turn on the fan
+                value: device
+              - label: Turn on the fan and run my actions
+                value: both
+              - label: Only run my own actions
+                value: actions
+
+        high_action:
+          name: My actions
+          visible:
+            field: high_fan_mode
+            operator: not_eq
+            value: device
           default: []
           selector:
             action: {}
@@ -175,10 +205,25 @@ blueprint:
       name: Turning the fan off
       icon: mdi:fan-off
       input:
+        off_fan_mode:
+          name: When the room has dried out
+          default: device
+          selector:
+            select:
+              options:
+              - label: Turn off the fan
+                value: device
+              - label: Turn off the fan and run my actions
+                value: both
+              - label: Only run my own actions
+                value: actions
+
         high_normal_action:
-          name: To turn the fan off
-          description: >-
-            Usually: turn off the fan.
+          name: My actions
+          visible:
+            field: off_fan_mode
+            operator: not_eq
+            value: device
           default: []
           selector:
             action: {}
@@ -225,10 +270,34 @@ blueprint:
         field: enable_low
         value: true
       input:
-        low_action:
-          name: When it's too dry
+        monitored_low_entity:
+          name: Humidifier
           description: >-
-            Usually: turn on the humidifier.
+            The humidifier to switch.
+          default: []
+          selector:
+            entity:
+              multiple: true
+
+        low_on_mode:
+          name: When it's too dry
+          default: device
+          selector:
+            select:
+              options:
+              - label: Turn on the humidifier
+                value: device
+              - label: Turn on the humidifier and run my actions
+                value: both
+              - label: Only run my own actions
+                value: actions
+
+        low_action:
+          name: My actions
+          visible:
+            field: low_on_mode
+            operator: not_eq
+            value: device
           default: []
           selector:
             action: {}
@@ -251,10 +320,25 @@ blueprint:
               max: 120
               unit_of_measurement: minutes
 
-        low_normal_action:
+        low_off_mode:
           name: When it's back to normal
-          description: >-
-            Usually: turn off the humidifier.
+          default: device
+          selector:
+            select:
+              options:
+              - label: Turn off the humidifier
+                value: device
+              - label: Turn off the humidifier and run my actions
+                value: both
+              - label: Only run my own actions
+                value: actions
+
+        low_normal_action:
+          name: My actions
+          visible:
+            field: low_off_mode
+            operator: not_eq
+            value: device
           default: []
           selector:
             action: {}
@@ -267,18 +351,6 @@ blueprint:
               min: 0
               max: 120
               unit_of_measurement: minutes
-
-        monitored_low_entity:
-          name: Humidifier
-          description: >-
-            Needed for "Pause after manual changes".
-          visible:
-            field: enable_manual_override_protection
-            value: true
-          default: []
-          selector:
-            entity:
-              multiple: true
 
     section_override:
       name: Manual changes
@@ -482,6 +554,16 @@ variables:
   monitored_low_entity_var: >-
     {{ (monitored_low_entity_list | first) if monitored_low_entity_list else none }}
 
+  # ---- What each event does: switch the device above, run your own
+  # ---- actions, or both.
+  fan_entity: "{{ monitored_high_entity_var }}"
+  humidifier_entity: "{{ monitored_low_entity_var }}"
+  shower_fan_mode: !input shower_fan_mode
+  high_fan_mode: !input high_fan_mode
+  off_fan_mode: !input off_fan_mode
+  low_on_mode: !input low_on_mode
+  low_off_mode: !input low_off_mode
+
   manual_high_current_state: >-
     {{ states(monitored_high_entity_var) if monitored_high_entity_var else none }}
   manual_high_is_manual_and_recent: >-
@@ -560,22 +642,50 @@ actions:
               - conditions:
                   - "{{ h > high_threshold and (not a_ok or h >= a + ambient_min_difference) }}"
                   - "{{ not manual_override_blocks_high_on_var }}"
-                sequence: !input high_action
+                sequence:
+                  - if: "{{ high_fan_mode != 'actions' and fan_entity }}"
+                    then:
+                      - action: homeassistant.turn_on
+                        target:
+                          entity_id: "{{ fan_entity }}"
+                  # Hidden (so empty) when only the device is switched.
+                  - sequence: !input high_action
               - conditions:
                   - "{{ h < high_exit or (a_ok and h < a + ambient_min_difference - deadband) }}"
                   - "{{ not manual_override_blocks_high_off_var }}"
-                sequence: !input high_normal_action
+                sequence:
+                  - if: "{{ off_fan_mode != 'actions' and fan_entity }}"
+                    then:
+                      - action: homeassistant.turn_off
+                        target:
+                          entity_id: "{{ fan_entity }}"
+                  # Hidden (so empty) when only the device is switched.
+                  - sequence: !input high_normal_action
       - if: "{{ enable_low }}"
         then:
           - choose:
               - conditions:
                   - "{{ h < low_threshold }}"
                   - "{{ not manual_override_blocks_low_on_var }}"
-                sequence: !input low_action
+                sequence:
+                  - if: "{{ low_on_mode != 'actions' and humidifier_entity }}"
+                    then:
+                      - action: homeassistant.turn_on
+                        target:
+                          entity_id: "{{ humidifier_entity }}"
+                  # Hidden (so empty) when only the device is switched.
+                  - sequence: !input low_action
               - conditions:
                   - "{{ h > low_exit }}"
                   - "{{ not manual_override_blocks_low_off_var }}"
-                sequence: !input low_normal_action
+                sequence:
+                  - if: "{{ low_off_mode != 'actions' and humidifier_entity }}"
+                    then:
+                      - action: homeassistant.turn_off
+                        target:
+                          entity_id: "{{ humidifier_entity }}"
+                  # Hidden (so empty) when only the device is switched.
+                  - sequence: !input low_normal_action
       - stop: Startup catch-up done
 
   ##########################################################################
@@ -595,7 +705,14 @@ actions:
                 id: high_off
               - "{{ trigger.from_state is not none and is_number(trigger.from_state.state) }}"
               - "{{ not manual_override_blocks_high_off_var }}"
-            sequence: !input high_normal_action
+            sequence:
+              - if: "{{ off_fan_mode != 'actions' and fan_entity }}"
+                then:
+                  - action: homeassistant.turn_off
+                    target:
+                      entity_id: "{{ fan_entity }}"
+              # Hidden (so empty) when only the device is switched.
+              - sequence: !input high_normal_action
 
           ##################################################################
           # LOW HUMIDITY (e.g. humidifier)
@@ -604,14 +721,28 @@ actions:
               - condition: trigger
                 id: low_on
               - "{{ not manual_override_blocks_low_on_var }}"
-            sequence: !input low_action
+            sequence:
+              - if: "{{ low_on_mode != 'actions' and humidifier_entity }}"
+                then:
+                  - action: homeassistant.turn_on
+                    target:
+                      entity_id: "{{ humidifier_entity }}"
+              # Hidden (so empty) when only the device is switched.
+              - sequence: !input low_action
 
           - conditions:
               - condition: trigger
                 id: low_off
               - "{{ trigger.from_state is not none and is_number(trigger.from_state.state) }}"
               - "{{ not manual_override_blocks_low_off_var }}"
-            sequence: !input low_normal_action
+            sequence:
+              - if: "{{ low_off_mode != 'actions' and humidifier_entity }}"
+                then:
+                  - action: homeassistant.turn_off
+                    target:
+                      entity_id: "{{ humidifier_entity }}"
+              # Hidden (so empty) when only the device is switched.
+              - sequence: !input low_normal_action
 
           ##################################################################
           # DEBUG — humidity is high but the ambient blocker holds the fan
@@ -638,7 +769,14 @@ actions:
       - if: "{{ manual_override_blocks_high_on_var }}"
         then:
           - stop: Blocked by manual override
-      - sequence: !input high_action
+      - sequence:
+          - if: "{{ high_fan_mode != 'actions' and fan_entity }}"
+            then:
+              - action: homeassistant.turn_on
+                target:
+                  entity_id: "{{ fan_entity }}"
+          # Hidden (so empty) when only the device is switched.
+          - sequence: !input high_action
       # Only watch a fan this run turned on; one that was already on is
       # left to the threshold rules.
       - if: "{{ not settle_off_enabled or manual_high_current_state == 'on' }}"
@@ -690,7 +828,14 @@ actions:
                 Shower detected: humidity rose from {{ shower_start }}% to
                 {{ states(humidity_sensor) }}% within
                 {{ shower_rise_window }} minutes.
-      - sequence: !input shower_action
+      - sequence:
+          - if: "{{ shower_fan_mode != 'actions' and fan_entity }}"
+            then:
+              - action: homeassistant.turn_on
+                target:
+                  entity_id: "{{ fan_entity }}"
+          # Hidden (so empty) when only the device is switched.
+          - sequence: !input shower_action
       - if: "{{ not settle_off_enabled }}"
         then:
           - stop: Shower handled
@@ -761,4 +906,11 @@ actions:
           message: >
             Humidity settled at {{ states(humidity_sensor) }}% (stopped falling,
             or back close to the rest of the house) — fan off.
-  - sequence: !input high_normal_action
+  - sequence:
+      - if: "{{ off_fan_mode != 'actions' and fan_entity }}"
+        then:
+          - action: homeassistant.turn_off
+            target:
+              entity_id: "{{ fan_entity }}"
+      # Hidden (so empty) when only the device is switched.
+      - sequence: !input high_normal_action

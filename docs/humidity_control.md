@@ -12,12 +12,22 @@ off once the room has dried out.
    - **Turn the fan on when humidity is high:** also catches humidity that
      builds up slowly.
    - **Run a humidifier when it's too dry.**
-2. Fill in the actions in each section that appears (usually "turn on the
-   fan").
-3. **Turning the fan off:** add the action that turns the fan off.
+2. That's it. Every section turns the fan on or off by itself.
 
-Picking the **Fan** is recommended. The automation then knows when the fan
-is already on, and only turns off a fan it turned on itself.
+## Your own actions
+
+Each event (a shower starts, humidity is high, the room has dried out) has
+a choice:
+
+- **Turn on / off the fan** (default): switches the fan you picked at the
+  top.
+- **Turn on / off the fan and run my actions**: also runs your actions, for
+  example a notification.
+- **Only run my own actions**: for example turn on the AC to bring the
+  humidity down instead.
+
+The **My actions** box only appears when your actions are part of the
+choice. The humidifier works the same way.
 
 ## Shower detection
 
