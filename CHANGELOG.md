@@ -2,6 +2,22 @@
 
 All blueprints share one version number.
 
+## 0.6.0
+
+### Bathroom Fan
+
+- **Humidity elsewhere in the house** moved to the top, next to the room's
+  sensor, with its difference setting. It now helps everywhere, not just
+  for high humidity:
+  - **Shower detection:** a jump only counts if the room also ends up at
+    least the difference above the house, so a rise the whole house shares
+    isn't taken for a shower.
+  - **Turning off after a shower:** the fan turns off as soon as the room
+    is back within the difference minus the buffer of the house, instead
+    of waiting for the high-humidity rule (which only ran with high
+    humidity turned on).
+  - High humidity works as before.
+
 ## 0.5.0
 
 Every blueprint has been reworked so it's quicker to set up. Input keys

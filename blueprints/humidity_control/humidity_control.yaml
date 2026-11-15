@@ -1,8 +1,8 @@
-# HA-Marketplace-Blueprints v0.5.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.6.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Bathroom Fan – Humidity and Shower Control · v0.5.0
+  name: Bathroom Fan – Humidity and Shower Control · v0.6.0
   description: >
-    **Version 0.5.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.6.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
     Runs the bathroom fan when you shower or the air gets humid, and turns
@@ -28,6 +28,33 @@ blueprint:
               filter:
               - domain: sensor
                 device_class: humidity
+
+        ambient_sensor:
+          name: Humidity elsewhere in the house
+          description: >-
+            Optional, recommended. A humidity sensor in another room (not
+            outdoors). The fan then reacts to this room being more humid
+            than the rest of the house, so muggy days don't run it and it
+            turns off once the room is back to normal.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+              - domain: sensor
+                device_class: humidity
+
+        ambient_min_difference:
+          name: More humid than the house by at least
+          description: >-
+            Only used with a sensor elsewhere in the house.
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 50
+              step: 0.5
+              unit_of_measurement: '%'
 
         monitored_high_entity:
           name: Fan
@@ -131,30 +158,6 @@ blueprint:
               min: 0
               max: 120
               unit_of_measurement: minutes
-
-        ambient_sensor:
-          name: Compare with a sensor elsewhere in the house
-          description: >-
-            Optional. The fan then only runs when this room is clearly more
-            humid than the rest of the house, so a muggy day doesn't run it.
-            Don't use an outdoor sensor.
-          default: []
-          selector:
-            entity:
-              multiple: true
-              filter:
-              - domain: sensor
-                device_class: humidity
-
-        ambient_min_difference:
-          name: More humid than the house by at least
-          default: 10
-          selector:
-            number:
-              min: 0
-              max: 50
-              step: 0.5
-              unit_of_measurement: '%'
 
         high_normal_duration:
           name: Turn off once below the limit for
@@ -659,8 +662,14 @@ actions:
           - stop: Not a rising reading
       - variables:
           shower_start: "{{ trigger.from_state.state | float }}"
+      # With a sensor elsewhere in the house, the room must also end up
+      # clearly more humid than the house; a rise the whole house shares
+      # (or a jump that stays at house level) isn't a shower.
       - wait_template: >
-          {{ states(humidity_sensor) | float(0) >= shower_start + shower_rise_amount }}
+          {% set h = states(humidity_sensor) | float(0) %}
+          {% set a = states(ambient_entity) if ambient_entity else 'unknown' %}
+          {{ h >= shower_start + shower_rise_amount
+             and (not is_number(a) or h >= a | float + ambient_min_difference) }}
         timeout:
           minutes: "{{ shower_rise_window }}"
         continue_on_timeout: true
@@ -719,8 +728,16 @@ actions:
           timeout:
             minutes: "{{ settle_minutes }}"
           continue_on_timeout: true
+      # Done when readings stop changing, or as soon as the room is back
+      # close to the rest of the house (if a house sensor is set).
       until:
-        - "{{ (wait.trigger is none and is_number(states(humidity_sensor))) or repeat.index >= 500 }}"
+        - >
+          {% set h = states(humidity_sensor) %}
+          {% set a = states(ambient_entity) if ambient_entity else 'unknown' %}
+          {{ repeat.index >= 500
+             or (wait.trigger is none and is_number(h))
+             or (is_number(h) and is_number(a)
+                 and h | float < a | float + ambient_min_difference - deadband) }}
   # Re-check the fan now; the values from the start of the run are old.
   - variables:
       fan_state_now: "{{ states(monitored_high_entity_var) if monitored_high_entity_var else none }}"
@@ -742,6 +759,6 @@ actions:
         data:
           name: Humidity Automation
           message: >
-            Humidity settled at {{ states(humidity_sensor) }}% (no new reading
-            for {{ settle_minutes }} min after it started falling) — fan off.
+            Humidity settled at {{ states(humidity_sensor) }}% (stopped falling,
+            or back close to the rest of the house) — fan off.
   - sequence: !input high_normal_action

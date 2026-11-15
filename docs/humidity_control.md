@@ -5,7 +5,8 @@ off once the room has dried out.
 
 ## Setting it up
 
-1. **Sensor and fan:** pick the humidity sensor and the fan, then turn on
+1. **Sensor and fan:** pick the humidity sensor, a humidity sensor
+   elsewhere in the house (optional, recommended) and the fan, then turn on
    what you want:
    - **Detect showers:** the fan comes on as soon as humidity jumps.
    - **Turn the fan on when humidity is high:** also catches humidity that
@@ -32,6 +33,7 @@ The fan turns off at whichever comes first:
 
 - **Below the limit:** humidity stays under the turn-on level minus the
   buffer (or back close to the rest of the house) for the set time.
+- **Back close to the house** (with a house sensor): see below.
 - **Stopped falling** (on by default): after a shower or high humidity, the
   automation waits for humidity to peak and start falling. Once there has
   been no new reading for the set time (default 10 minutes), the room has
@@ -47,9 +49,22 @@ never turns the fan off.
 
 ## Comparing with the rest of the house
 
-Under **High humidity**, pick a humidity sensor elsewhere inside the house.
-The fan then only runs when this room is clearly more humid than the rest
-of the house, so a muggy day doesn't run it. Don't use an outdoor sensor.
+Pick a humidity sensor in another room (not outdoors) under **Humidity
+elsewhere in the house**. The automation then cares about this room being
+more humid than the rest of the house, not about the number on its own:
+
+- **Showers:** a jump only counts if the room also ends up at least the set
+  difference (default 10%) above the house. A rise the whole house shares
+  isn't a shower.
+- **High humidity:** the fan only turns on when the room is above the
+  turn-on level *and* that far above the house, so a muggy day doesn't run
+  it.
+- **Turning off:** the fan turns off as soon as the room is back within the
+  difference minus the buffer of the house. After a shower this works
+  while "Turn off once humidity stops falling" is on (the default).
+
+If the house sensor is unavailable, these checks are skipped and the
+regular levels apply.
 
 ## Manual changes
 
