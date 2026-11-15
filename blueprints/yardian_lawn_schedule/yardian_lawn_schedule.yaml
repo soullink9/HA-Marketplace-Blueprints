@@ -1,7 +1,10 @@
-# HA-Marketplace-Blueprints v0.3.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Yardian – fail-safe lawn watering
+  name: Yardian – fail-safe lawn watering · v0.4.0
   description: >
+    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+
+
     Runs Yardian Local zones one at a time, either at a fixed time or timed to
     finish before sunrise. Every zone is started with a duration so the
     controller stops it on its own even if Home Assistant dies. Includes a late

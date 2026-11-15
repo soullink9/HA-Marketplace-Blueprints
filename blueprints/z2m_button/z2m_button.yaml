@@ -1,7 +1,10 @@
-# HA-Marketplace-Blueprints v0.3.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Z2M Button – Single / Double / Hold (+ Release)
+  name: Z2M Button – Single / Double / Hold (+ Release) · v0.4.0
   description: >
+    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+
+
     Select a Zigbee2MQTT button/switch device and run actions for
     single press, double press, hold, and (optionally) hold-release.
     Modeled on the standard Z2M "action" MQTT device trigger.

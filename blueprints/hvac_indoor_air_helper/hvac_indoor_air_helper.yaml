@@ -1,7 +1,10 @@
-# HA-Marketplace-Blueprints v0.3.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Indoor Air Helper
+  name: Indoor Air Helper · v0.4.0
   description: >
+    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+
+
     Watches your indoor air (CO₂, humidity, VOCs, PM2.5). When any sensor goes
     above its limit, the HVAC fan is boosted. The boost lasts at least the
     minimum time, then keeps running until every sensor drops back below its

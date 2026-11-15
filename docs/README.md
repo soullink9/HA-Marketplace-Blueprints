@@ -51,6 +51,9 @@ same, so the automations using it don't need to change.
 
 ## Versions
 
-All blueprints share one version number, shown on the first line of each
-file. It goes up together for every release, even for blueprints that
-didn't change.
+All blueprints share one version number. It's shown in each blueprint's
+name in Home Assistant (for example "Humidity Automation (Fan Control +
+Shower Detection) · v0.4.0") and at the top of its description, so after a
+**Re-import blueprint** you can see at a glance which version you have.
+It's also on the first line of each file. It goes up together for every
+release, even for blueprints that didn't change.

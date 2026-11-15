@@ -1,7 +1,10 @@
-# HA-Marketplace-Blueprints v0.3.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Adaptive Light Controller
+  name: Adaptive Light Controller · v0.4.0
   description: >
+    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+
+
     Controls one room's lights. Turns them on and off using presence
     sensors (optional), a time/sun/lux schedule, and a check every 5
     minutes that self-corrects if a real trigger was missed. When lights

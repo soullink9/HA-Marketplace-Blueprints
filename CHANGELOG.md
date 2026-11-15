@@ -2,6 +2,36 @@
 
 All blueprints share one version number.
 
+## 0.4.0
+
+### All blueprints
+
+- The version now shows in Home Assistant: in each blueprint's name (for
+  example "Indoor Air Helper · v0.4.0") and at the top of its description,
+  with a link to this changelog. After **Re-import blueprint** you can see
+  which version you have.
+
+### Humidity Automation
+
+- Added **Turn Off Once Humidity Stops Falling** (default on) and **Stopped
+  Falling After** (default 10 min). After the automation turns the fan on
+  for a shower or high humidity, it waits for humidity to peak and fall,
+  then turns the fan off once readings stop changing. A room that settles
+  above the High Humidity Level (door open, humid day) no longer leaves the
+  fan on. With the Fan Entity set, it only turns off a fan it turned on.
+- Fixed: a humidity sensor dropping out and coming back re-armed "back to
+  normal" and ran the off actions 5 minutes later, even with humidity
+  unchanged. With a light/fan combo this could switch off a light someone
+  was using. Only a real reading can trigger the off actions now (low side
+  too).
+- **How Fast the Rise Must Happen** now defaults to 5 minutes (was 2). Many
+  sensors report only every one to two minutes, so 2 minutes often covered
+  a single reading.
+- The fan entity and the off actions moved to a new **Fan and turning it
+  off** group, because shower detection and the high side both use them.
+  "What To Do When Humidity Is Back to Normal" now always shows, so it works
+  with shower detection alone. Input names are unchanged.
+
 ## 0.3.0
 
 Built for Home Assistant 2026.11. Older versions are no longer supported.

@@ -1,7 +1,10 @@
-# HA-Marketplace-Blueprints v0.3.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Humidity Automation (Fan Control + Shower Detection)
+  name: Humidity Automation (Fan Control + Shower Detection) · v0.4.0
   description: >
+    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+
+
     Smart bathroom fan control for everyday users. Turns the fan on when
     humidity gets high or rises quickly (shower), and turns it off again
     when the room dries out. Optionally compares against an ambient
@@ -112,18 +115,6 @@ blueprint:
               min: 0
               max: 120
 
-        high_normal_action:
-          visible:
-            field: enable_high
-            value: true
-          name: What To Do When Humidity Returns to Normal
-          description: >
-            Actions to run when humidity drops back to normal. Usually: turn off
-            the fan.
-          default: []
-          selector:
-            action: {}
-
         ambient_sensor:
           visible:
             field: enable_high
@@ -165,6 +156,69 @@ blueprint:
               min: 0
               max: 50
               step: 0.5
+
+    section_fan_off:
+      name: "Fan and turning it off"
+      icon: mdi:fan-off
+      description: >
+        Used by both the high-humidity side and shower detection.
+      input:
+        monitored_high_entity:
+          name: Fan Entity (recommended)
+          description: >
+            The fan (or light/fan combo) that your ON and OFF actions control.
+            Pick exactly one. With it set, shower detection is skipped while
+            the fan is already on, "Turn Off Once Humidity Stops Falling" only
+            turns off a fan this automation turned on, and Manual Override
+            Protection can watch the high side.
+          default: []
+          selector:
+            entity:
+              multiple: true
+
+        high_normal_action:
+          name: What To Do When Humidity Is Back to Normal
+          description: >
+            Actions that turn the fan off. They run when humidity drops back
+            below the High Humidity Level minus the buffer zone (or back near
+            ambient), and when a fan this automation turned on for a shower or
+            high humidity has stopped helping (see below). Usually: turn off
+            the fan.
+          default: []
+          selector:
+            action: {}
+
+        settle_off_enabled:
+          name: Turn Off Once Humidity Stops Falling
+          description: >
+            After this automation turns the fan on (shower or high humidity),
+            it waits for humidity to peak and start falling, then turns the
+            fan off once the reading hasn't changed for the time below. This
+            stops the fan running all day when the room settles above the
+            High Humidity Level, for example on a humid day or with the door
+            open. A Home Assistant restart cancels the wait; the normal
+            threshold rules still apply after that.
+          default: true
+          selector:
+            boolean: {}
+
+        settle_minutes:
+          visible:
+            field: settle_off_enabled
+            value: true
+          name: Stopped Falling After (minutes)
+          description: >
+            How long humidity must go without a new reading, after it has
+            started falling, to count as settled. Many sensors only report
+            when the value moves by 1–2 %, so no new reading means it has
+            stopped changing.
+          default: 10
+          selector:
+            number:
+              min: 3
+              max: 60
+              mode: slider
+              unit_of_measurement: minutes
 
     section_low:
       name: "Low humidity (e.g. humidifier)"
@@ -259,7 +313,7 @@ blueprint:
             sensors that report in small steps: the rise is measured from the
             reading where it started climbing, not just between two readings.
             Runs independently of the high-humidity side. Skipped while the
-            Manual Override high-side entity (if set) is already on.
+            Fan Entity (if set) is already on.
           default: false
           selector:
             boolean: {}
@@ -285,8 +339,10 @@ blueprint:
           name: How Fast the Rise Must Happen (minutes)
           description: >
             The humidity must rise by the required amount within this many
-            minutes to count as a shower.
-          default: 2
+            minutes to count as a shower. Many humidity sensors only report
+            every one to two minutes, so a window of 5 minutes or more lets
+            the rise show up over a few readings.
+          default: 5
           selector:
             number:
               min: 1
@@ -322,19 +378,6 @@ blueprint:
           default: false
           selector:
             boolean: {}
-
-        monitored_high_entity:
-          name: "Manual Override: High-Side Entity (e.g. fan)"
-          description: >
-            The entity that high_action/high_normal_action actually control
-            (usually your fan). Required if Manual Override Protection is
-            enabled and you want it to apply to the high-humidity side. Select
-            exactly one entity. Leave empty to skip override protection for
-            this side.
-          default: []
-          selector:
-            entity:
-              multiple: true
 
         monitored_low_entity:
           visible:
@@ -405,8 +448,9 @@ blueprint:
             boolean: {}
 
 mode: parallel
-# Shower detection keeps a short-lived run per rising reading (see below),
-# so leave room for those; anything beyond is dropped without log spam.
+# Shower detection keeps a short-lived run per rising reading, and a run
+# that turned the fan on stays until humidity settles (see below), so leave
+# room for those; anything beyond is dropped without log spam.
 max: 30
 max_exceeded: silent
 
@@ -512,6 +556,9 @@ variables:
   shower_rise_window: !input shower_rise_window
 
   enable_debug: !input enable_debug
+
+  settle_off_enabled: !input settle_off_enabled
+  settle_minutes: !input settle_minutes
 
   # ---- Ambient humidity blocker
   ambient_sensor_list: !input ambient_sensor
@@ -642,98 +689,173 @@ actions:
                 sequence: !input low_normal_action
       - stop: Startup catch-up done
 
-  - choose:
-      ######################################################################
-      # HIGH HUMIDITY — stayed high (and above ambient) for high_duration
-      ######################################################################
-      - conditions:
-          - condition: trigger
-            id: high_on
-          - "{{ not manual_override_blocks_high_on_var }}"
-        sequence: !input high_action
+  ##########################################################################
+  # EVERYTHING EXCEPT THE TWO FAN-ON PATHS: one decision, then done
+  ##########################################################################
+  - if: "{{ trigger.id not in ['high_on', 'reading'] }}"
+    then:
+      - choose:
+          ##################################################################
+          # HIGH NORMAL RETURN — stayed below the exit threshold, or back
+          # near ambient, for high_normal_duration. A sensor coming back
+          # from unavailable re-arms this trigger, so only a real reading
+          # counts; a dropout must never switch the fan off.
+          ##################################################################
+          - conditions:
+              - condition: trigger
+                id: high_off
+              - "{{ trigger.from_state is not none and is_number(trigger.from_state.state) }}"
+              - "{{ not manual_override_blocks_high_off_var }}"
+            sequence: !input high_normal_action
 
-      ######################################################################
-      # HIGH NORMAL RETURN — stayed below the exit threshold, or back near
-      # ambient, for high_normal_duration (so it can't run all day on
-      # humid days)
-      ######################################################################
-      - conditions:
-          - condition: trigger
-            id: high_off
-          - "{{ not manual_override_blocks_high_off_var }}"
-        sequence: !input high_normal_action
+          ##################################################################
+          # LOW HUMIDITY (e.g. humidifier)
+          ##################################################################
+          - conditions:
+              - condition: trigger
+                id: low_on
+              - "{{ not manual_override_blocks_low_on_var }}"
+            sequence: !input low_action
 
-      ######################################################################
-      # LOW HUMIDITY (e.g. humidifier)
-      ######################################################################
-      - conditions:
-          - condition: trigger
-            id: low_on
-          - "{{ not manual_override_blocks_low_on_var }}"
-        sequence: !input low_action
+          - conditions:
+              - condition: trigger
+                id: low_off
+              - "{{ trigger.from_state is not none and is_number(trigger.from_state.state) }}"
+              - "{{ not manual_override_blocks_low_off_var }}"
+            sequence: !input low_normal_action
 
-      - conditions:
-          - condition: trigger
-            id: low_off
-          - "{{ not manual_override_blocks_low_off_var }}"
-        sequence: !input low_normal_action
-
-      ######################################################################
-      # DEBUG — humidity is high but the ambient blocker is holding the fan
-      ######################################################################
-      - conditions:
-          - condition: trigger
-            id: high_raw
-          - "{{ enable_high and not ambient_allows_on }}"
-        sequence:
-          - action: logbook.log
-            data:
-              name: Humidity Automation
-              message: >
-                Ambient blocker: room {{ humidity }}% is above
-                {{ high_threshold }}% but within {{ ambient_min_difference }}%
-                of ambient ({{ ambient }}%) — fan not turned on.
-
-      ######################################################################
-      # SHOWER DETECTION (rate of rise)
-      # Comparing only two consecutive readings missed showers on sensors
-      # that report every 1–2 %. Instead, each rising reading remembers
-      # where the climb started and waits up to the window for humidity to
-      # reach start + rise. Runs that time out just end.
-      ######################################################################
-      - conditions:
-          - condition: trigger
-            id: reading
-          - "{{ enable_shower and not manual_override_blocks_high_on_var }}"
-          - >
-            {% set f = trigger.from_state %}
-            {{ f is not none and is_number(f.state) and is_number(trigger.to_state.state)
-               and trigger.to_state.state | float > f.state | float }}
-        sequence:
-          - variables:
-              shower_start: "{{ trigger.from_state.state | float }}"
-          - wait_template: >
-              {{ states(humidity_sensor) | float(0) >= shower_start + shower_rise_amount }}
-            timeout:
-              minutes: "{{ shower_rise_window }}"
-            continue_on_timeout: false
-          # Several overlapping waits can finish on the same reading; skip
-          # if the fan (Manual Override high-side entity) is already on.
-          - condition: template
-            value_template: >
-              {{ monitored_high_entity_var is none
-                 or not is_state(monitored_high_entity_var, 'on') }}
-          - if:
-              - condition: template
-                value_template: "{{ enable_debug }}"
-            then:
+          ##################################################################
+          # DEBUG — humidity is high but the ambient blocker holds the fan
+          ##################################################################
+          - conditions:
+              - condition: trigger
+                id: high_raw
+              - "{{ enable_high and not ambient_allows_on }}"
+            sequence:
               - action: logbook.log
                 data:
                   name: Humidity Automation
                   message: >
-                    Shower detected: humidity rose from {{ shower_start }}% to
-                    {{ states(humidity_sensor) }}% within
-                    {{ shower_rise_window }} minutes.
-          - sequence: !input shower_action
+                    Ambient blocker: room {{ humidity }}% is above
+                    {{ high_threshold }}% but within {{ ambient_min_difference }}%
+                    of ambient ({{ ambient }}%) — fan not turned on.
+      - stop: Done
 
-    default: []
+  ##########################################################################
+  # HIGH HUMIDITY — stayed high (and above ambient) for high_duration
+  ##########################################################################
+  - if: "{{ trigger.id == 'high_on' }}"
+    then:
+      - if: "{{ manual_override_blocks_high_on_var }}"
+        then:
+          - stop: Blocked by manual override
+      - sequence: !input high_action
+      # Only watch a fan this run turned on; one that was already on is
+      # left to the threshold rules.
+      - if: "{{ not settle_off_enabled or manual_high_current_state == 'on' }}"
+        then:
+          - stop: High humidity handled
+
+    ########################################################################
+    # SHOWER DETECTION (rate of rise)
+    # Each rising reading remembers the reading before it and waits up to
+    # the window for humidity to reach that + the rise amount, so a climb
+    # over several readings is caught, not just one big step. A reading
+    # coming back from unavailable/unknown is never counted as a rise.
+    ########################################################################
+    else:
+      - if: >
+          {% set f = trigger.from_state %}
+          {{ not enable_shower or manual_override_blocks_high_on_var
+             or f is none or not is_number(f.state) or not is_number(trigger.to_state.state)
+             or trigger.to_state.state | float <= f.state | float }}
+        then:
+          - stop: Not a rising reading
+      - variables:
+          shower_start: "{{ trigger.from_state.state | float }}"
+      - wait_template: >
+          {{ states(humidity_sensor) | float(0) >= shower_start + shower_rise_amount }}
+        timeout:
+          minutes: "{{ shower_rise_window }}"
+        continue_on_timeout: true
+      - if: "{{ not wait.completed }}"
+        then:
+          - stop: No shower
+      # Several overlapping waits can finish on the same reading; skip if
+      # the fan is already on.
+      - if: "{{ monitored_high_entity_var is not none and is_state(monitored_high_entity_var, 'on') }}"
+        then:
+          - stop: Fan already on
+      - if: "{{ enable_debug }}"
+        then:
+          - action: logbook.log
+            data:
+              name: Humidity Automation
+              message: >
+                Shower detected: humidity rose from {{ shower_start }}% to
+                {{ states(humidity_sensor) }}% within
+                {{ shower_rise_window }} minutes.
+      - sequence: !input shower_action
+      - if: "{{ not settle_off_enabled }}"
+        then:
+          - stop: Shower handled
+
+  ##########################################################################
+  # TURN OFF ONCE HUMIDITY STOPS FALLING (this run turned the fan on)
+  # 1. Wait for the peak: the first real reading lower than the one before
+  #    (a long flat stretch at the top while the water still runs is not
+  #    "settled"). Gives up waiting after an hour without any reading.
+  # 2. Then wait until no new reading has arrived for settle_minutes.
+  #    Unavailable/unknown readings just restart the wait.
+  ##########################################################################
+  - repeat:
+      sequence:
+        - wait_for_trigger:
+            - trigger: state
+              entity_id: !input humidity_sensor
+              to: ~
+          timeout:
+            minutes: 60
+          continue_on_timeout: true
+      until:
+        - >
+          {% set t = wait.trigger %}
+          {{ t is none or repeat.index >= 500
+             or (t.from_state is not none and is_number(t.from_state.state)
+                 and is_number(t.to_state.state)
+                 and t.to_state.state | float < t.from_state.state | float) }}
+  - repeat:
+      sequence:
+        - wait_for_trigger:
+            - trigger: state
+              entity_id: !input humidity_sensor
+              to: ~
+          timeout:
+            minutes: "{{ settle_minutes }}"
+          continue_on_timeout: true
+      until:
+        - "{{ (wait.trigger is none and is_number(states(humidity_sensor))) or repeat.index >= 500 }}"
+  # Re-check the fan now; the values from the start of the run are old.
+  - variables:
+      fan_state_now: "{{ states(monitored_high_entity_var) if monitored_high_entity_var else none }}"
+      override_blocks_off_now: >-
+        {% set st = states[monitored_high_entity_var] if monitored_high_entity_var else none %}
+        {{ enable_manual_override_var and st is not none and st.state == 'on'
+           and ((st.context.user_id is not none) or (st.context.parent_id is none))
+           and (now() - st.last_changed).total_seconds() < override_duration_minutes_var * 60
+           and override_direction_var in ['both','block_off_after_manual_on'] }}
+  - if: "{{ monitored_high_entity_var is not none and fan_state_now != 'on' }}"
+    then:
+      - stop: Fan is already off
+  - if: "{{ override_blocks_off_now }}"
+    then:
+      - stop: Blocked by manual override
+  - if: "{{ enable_debug }}"
+    then:
+      - action: logbook.log
+        data:
+          name: Humidity Automation
+          message: >
+            Humidity settled at {{ states(humidity_sensor) }}% (no new reading
+            for {{ settle_minutes }} min after it started falling) — fan off.
+  - sequence: !input high_normal_action
