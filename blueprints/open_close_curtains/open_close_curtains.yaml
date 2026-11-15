@@ -1,19 +1,12 @@
-# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.5.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Curtains – Morning Open / Night Close · v0.4.0
+  name: Curtains – Morning Open and Evening Close · v0.5.0
   description: >
-    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.5.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
-    Automatically opens curtains in the morning and closes them at night,
-    based on illuminance and/or sun elevation. Either direction can be
-    disabled independently. No helper entities required.
-
-    Includes optional "outer protections" against missed events and bad
-    readings: a Home Assistant restart recheck, a periodic safety
-    heartbeat, absolute failsafe times, a dead-sensor fallback to the sun,
-    and a check that ignores light readings the sun says are impossible
-    (for example "dark" at noon from a sensor that stopped reporting).
+    Opens curtains in the morning and closes them in the evening, using a
+    light sensor, the sun, or both.
   domain: automation
   author: soullink9
   source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/open_close_curtains/open_close_curtains.yaml
@@ -22,131 +15,69 @@ blueprint:
 
   input:
     section_curtains:
-      name: "Curtains"
+      name: Curtains
       icon: mdi:curtains
       input:
         curtains:
           name: Curtains
-          description: >
-            The curtains to control. Closed at night if any are open, opened
-            in the morning if any are closed.
           selector:
             entity:
               multiple: true
               filter:
-                - domain: cover
-
-        enable_evening_close:
-          name: Enable Evening Close
-          default: true
-          selector:
-            boolean: {}
+              - domain: cover
 
         enable_morning_open:
-          name: Enable Morning Open
+          name: Open in the morning
           default: true
           selector:
             boolean: {}
 
-    section_evening:
-      name: "Evening close"
-      icon: mdi:weather-sunset-down
-      visible:
-        field: enable_evening_close
-        value: true
-      input:
-        evening_illuminance_sensor:
-          name: (Evening) Illuminance Sensor
-          description: >
-            Optional. Leave empty to close on sun elevation only (turn on the
-            sun option below).
-          default: []
-          selector:
-            entity:
-              multiple: false
-              filter:
-                - domain: sensor
-                  device_class: illuminance
-
-        evening_illuminance_threshold:
-          name: (Evening) Illuminance Threshold
-          default: 5
-          selector:
-            number:
-              min: 0
-              max: 200
-              unit_of_measurement: lx
-              mode: slider
-
-        evening_below_duration:
-          name: (Evening) Must Stay Dark For
-          default:
-            minutes: 1
-          selector:
-            duration: {}
-
-        use_evening_sun_fallback:
-          name: (Evening) Also Trigger On Sun Elevation
-          description: >
-            Also close when the sun drops below the elevation below, even if
-            the illuminance sensor still reads bright. If the sensor is dead
-            (see "Treat Sensor As Dead After"), the sun is used anyway.
+        enable_evening_close:
+          name: Close in the evening
           default: true
           selector:
             boolean: {}
-
-        evening_sun_elevation:
-          name: (Evening) Sun Elevation Threshold
-          description: Trigger when sun elevation drops below this (degrees).
-          default: -2
-          selector:
-            number:
-              min: -20
-              max: 20
-              unit_of_measurement: "°"
-              mode: slider
-
-        enable_evening_failsafe:
-          name: (Evening) Enable Failsafe Time
-          description: >
-            Force-close curtains at a fixed time no matter what the sensors
-            say. Use this if your illuminance sensor is prone to going
-            unavailable. Off by default.
-          default: false
-          selector:
-            boolean: {}
-
-        evening_failsafe_time:
-          visible:
-            field: enable_evening_failsafe
-            value: true
-          name: (Evening) Failsafe Close Time
-          default: "22:00:00"
-          selector:
-            time: {}
 
     section_morning:
-      name: "Morning open"
+      name: Morning
       icon: mdi:weather-sunset-up
       visible:
         field: enable_morning_open
         value: true
       input:
+        morning_source:
+          name: Open when
+          default: both
+          selector:
+            select:
+              options:
+              - label: It gets bright (light sensor or sun, whichever is first)
+                value: both
+              - label: The sun rises
+                value: sun
+              - label: The light sensor reads bright
+                value: sensor
+
         morning_illuminance_sensor:
-          name: (Morning) Illuminance Sensor
-          description: >
-            Optional. Leave empty to open on sun elevation only (turn on the
-            sun option below).
+          name: Light sensor
+          visible:
+            field: morning_source
+            operator: not_eq
+            value: sun
           default: []
           selector:
             entity:
               multiple: false
               filter:
-                - domain: sensor
-                  device_class: illuminance
+              - domain: sensor
+                device_class: illuminance
 
         morning_illuminance_threshold:
-          name: (Morning) Illuminance Threshold
+          name: Bright above
+          visible:
+            field: morning_source
+            operator: not_eq
+            value: sun
           default: 50
           selector:
             number:
@@ -156,108 +87,172 @@ blueprint:
               mode: slider
 
         morning_above_duration:
-          name: (Morning) Must Stay Bright For
+          name: For at least
+          visible:
+            field: morning_source
+            operator: not_eq
+            value: sun
           default:
             minutes: 1
           selector:
             duration: {}
 
-        use_morning_sun_fallback:
-          name: (Morning) Also Trigger On Sun Elevation
-          description: >
-            Also open when the sun rises above the elevation below, even if
-            the illuminance sensor still reads dark. If the sensor is dead
-            (see "Treat Sensor As Dead After"), the sun is used anyway.
-          default: true
-          selector:
-            boolean: {}
-
         morning_sun_elevation:
-          name: (Morning) Sun Elevation Threshold
-          description: Trigger when sun elevation rises above this (degrees).
+          name: Sun is up above
+          description: >-
+            Sun height in degrees. Also used while the light sensor is
+            offline.
           default: 0
           selector:
             number:
               min: -20
               max: 20
-              unit_of_measurement: "°"
+              unit_of_measurement: °
               mode: slider
 
         morning_not_before:
-          name: (Morning) Earliest Allowed Time
-          description: >
-            Never open before this time, even if it's bright/sun is up
-            (handy in summer when sunrise is very early).
+          name: Not before
+          description: >-
+            Handy in summer, when the sun rises very early.
           default: "06:30:00"
           selector:
             time: {}
 
         morning_not_after:
-          name: (Morning) Latest Allowed Time
-          description: >
-            Sensor, sun, restart and periodic checks only open the curtains
-            between the Earliest Allowed Time and this time. After it, curtains
-            you closed yourself (for glare or privacy) stay closed. The
-            morning failsafe time is not limited by this.
+          name: Not after
+          description: >-
+            Curtains you close later in the day stay closed.
           default: "12:00:00"
           selector:
             time: {}
 
         enable_morning_failsafe:
-          name: (Morning) Enable Failsafe Time
-          description: >
-            Force-open curtains at a fixed time no matter what the sensors
-            say. Use this if your illuminance sensor is prone to going
-            unavailable. Off by default.
+          name: Always open by a set time
           default: false
           selector:
             boolean: {}
 
         morning_failsafe_time:
+          name: Open by
           visible:
             field: enable_morning_failsafe
             value: true
-          name: (Morning) Failsafe Open Time
           default: "09:00:00"
           selector:
             time: {}
 
+    section_evening:
+      name: Evening
+      icon: mdi:weather-sunset-down
+      visible:
+        field: enable_evening_close
+        value: true
+      input:
+        evening_source:
+          name: Close when
+          default: both
+          selector:
+            select:
+              options:
+              - label: It gets dark (light sensor or sun, whichever is first)
+                value: both
+              - label: The sun sets
+                value: sun
+              - label: The light sensor reads dark
+                value: sensor
+
+        evening_illuminance_sensor:
+          name: Light sensor
+          visible:
+            field: evening_source
+            operator: not_eq
+            value: sun
+          default: []
+          selector:
+            entity:
+              multiple: false
+              filter:
+              - domain: sensor
+                device_class: illuminance
+
+        evening_illuminance_threshold:
+          name: Dark below
+          visible:
+            field: evening_source
+            operator: not_eq
+            value: sun
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 200
+              unit_of_measurement: lx
+              mode: slider
+
+        evening_below_duration:
+          name: For at least
+          visible:
+            field: evening_source
+            operator: not_eq
+            value: sun
+          default:
+            minutes: 1
+          selector:
+            duration: {}
+
+        evening_sun_elevation:
+          name: Sun is down below
+          description: >-
+            Sun height in degrees. Also used while the light sensor is
+            offline.
+          default: -2
+          selector:
+            number:
+              min: -20
+              max: 20
+              unit_of_measurement: °
+              mode: slider
+
+        enable_evening_failsafe:
+          name: Always close by a set time
+          default: false
+          selector:
+            boolean: {}
+
+        evening_failsafe_time:
+          name: Close by
+          visible:
+            field: enable_evening_failsafe
+            value: true
+          default: "22:00:00"
+          selector:
+            time: {}
+
     section_protections:
-      name: "Protections"
+      name: Reliability
       icon: mdi:shield-check-outline
       collapsed: true
       input:
         enable_startup_recheck:
-          name: Re-check On Home Assistant Restart
-          description: >
-            A threshold-crossing trigger won't fire again if HA restarts
-            after the crossing already happened (e.g. reboot at 9am when
-            it got bright at 7am). This re-evaluates current conditions on
-            every HA startup so the curtains catch up.
+          name: Catch up after Home Assistant restarts
           default: true
           selector:
             boolean: {}
 
         enable_periodic_recheck:
-          name: Enable Periodic Safety Check
-          description: >
-            Every 15 minutes, re-checks whether curtains match current
-            conditions, independent of whether a crossing trigger ever
-            fired. Self-healing against missed triggers, sensor dropouts,
-            or automation reloads. Harmless when curtains are already in
-            the correct state.
+          name: Re-check every 15 minutes
+          description: >-
+            Fixes anything missed. Does nothing if the curtains are already
+            right.
           default: true
           selector:
             boolean: {}
 
         sensor_stale_minutes:
-          name: Treat Sensor As Dead After (minutes)
-          description: >
-            If an illuminance sensor hasn't reported anything for this long,
-            its last value is ignored and the sun elevation thresholds are
-            used instead. Catches weather stations that stop sending (for
-            example a solar-powered sensor that runs flat overnight) while
-            Home Assistant keeps showing the old reading. 0 = never.
+          name: Treat a light sensor as offline after
+          description: >-
+            No reading for this long means it's offline, and the sun is used
+            instead. 0 = never.
           default: 30
           selector:
             number:
@@ -267,13 +262,10 @@ blueprint:
               mode: box
 
         sun_sanity_check:
-          name: Ignore Readings That Don't Match the Sun
-          description: >
-            Never close because of a "dark" reading while the sun is higher
-            than 10°, and never open because of a "bright" reading while the
-            sun is lower than -6° (darker than civil twilight). Stops a stuck
-            or covered sensor from closing the curtains at midday or opening
-            them at night. Failsafe times are not affected.
+          name: Ignore light readings that don't match the sun
+          description: >-
+            Never closes for "dark" in full daylight or opens for "bright"
+            at night, for example from a covered or stuck sensor.
           default: true
           selector:
             boolean: {}
@@ -285,8 +277,11 @@ max_exceeded: silent
 variables:
   enable_evening_close: !input enable_evening_close
   enable_morning_open: !input enable_morning_open
-  use_evening_sun_fallback: !input use_evening_sun_fallback
-  use_morning_sun_fallback: !input use_morning_sun_fallback
+  evening_source: !input evening_source
+  morning_source: !input morning_source
+  # "sensor" hides the sensor's sun backup; "sun" hides the sensor (so it's empty).
+  use_evening_sun_fallback: "{{ evening_source in ['both', 'sun'] }}"
+  use_morning_sun_fallback: "{{ morning_source in ['both', 'sun'] }}"
   evening_threshold: !input evening_illuminance_threshold
   morning_threshold: !input morning_illuminance_threshold
   evening_sun: !input evening_sun_elevation
@@ -346,7 +341,6 @@ triggers:
     entity_id: sun.sun
     attribute: elevation
     below: !input evening_sun_elevation
-    enabled: !input use_evening_sun_fallback
 
   - trigger: numeric_state
     id: morning_illuminance
@@ -360,7 +354,6 @@ triggers:
     entity_id: sun.sun
     attribute: elevation
     above: !input morning_sun_elevation
-    enabled: !input use_morning_sun_fallback
 
   - trigger: homeassistant
     id: startup_recheck

@@ -2,12 +2,12 @@
 
 | Blueprint | Page |
 |---|---|
-| Adaptive Light Controller | [adaptive_light_controller.md](adaptive_light_controller.md) |
-| Curtains – Morning Open / Night Close | [open_close_curtains.md](open_close_curtains.md) |
-| Indoor Air Helper (HVAC) | [hvac_indoor_air_helper.md](hvac_indoor_air_helper.md) |
-| Humidity Automation | [humidity_control.md](humidity_control.md) |
-| Z2M Button | [z2m_button.md](z2m_button.md) |
-| Yardian – Fail-safe Lawn Watering | [yardian_lawn_schedule.md](yardian_lawn_schedule.md) |
+| Adaptive Lights – Automatic Room Lighting | [adaptive_light_controller.md](adaptive_light_controller.md) |
+| Curtains – Morning Open and Evening Close | [open_close_curtains.md](open_close_curtains.md) |
+| Indoor Air – HVAC Fan Boost | [hvac_indoor_air_helper.md](hvac_indoor_air_helper.md) |
+| Bathroom Fan – Humidity and Shower Control | [humidity_control.md](humidity_control.md) |
+| Zigbee2MQTT Button | [z2m_button.md](z2m_button.md) |
+| Lawn Watering – Yardian Fail-safe Schedule | [yardian_lawn_schedule.md](yardian_lawn_schedule.md) |
 
 ## Requirements
 
@@ -36,8 +36,9 @@ automations keep working without being edited.
 
 ## Settings that only show when they apply
 
-Settings that depend on another one, such as the Quiet Hours values when
-Circadian Brightness is off, are hidden until they matter. A hidden setting
+Each blueprint starts with what you have and what you want it to do.
+Sections and settings for a feature only appear once you turn that feature
+on, so you only see what applies to you. A hidden setting
 goes back to its default and is ignored, so turning a feature off and on
 again resets its settings to the defaults.
 
@@ -49,11 +50,15 @@ version from this repo once. It then carries the `source_url`, and
 **Re-import blueprint** works on it from then on. The file path stays the
 same, so the automations using it don't need to change.
 
+## Writing style
+
+New and changed blueprints follow the [writing and layout guide](STYLE.md).
+
 ## Versions
 
 All blueprints share one version number. It's shown in each blueprint's
-name in Home Assistant (for example "Humidity Automation (Fan Control +
-Shower Detection) · v0.4.0") and at the top of its description, so after a
+name in Home Assistant (for example "Bathroom Fan – Humidity and Shower
+Control · v0.5.0") and at the top of its description, so after a
 **Re-import blueprint** you can see at a glance which version you have.
 It's also on the first line of each file. It goes up together for every
 release, even for blueprints that didn't change.

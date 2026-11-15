@@ -1,13 +1,12 @@
-# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.5.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Z2M Button – Single / Double / Hold (+ Release) · v0.4.0
+  name: Zigbee2MQTT Button – Single, Double, Hold and Release · v0.5.0
   description: >
-    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.5.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
-    Select a Zigbee2MQTT button/switch device and run actions for
-    single press, double press, hold, and (optionally) hold-release.
-    Modeled on the standard Z2M "action" MQTT device trigger.
+    Runs your actions when a Zigbee2MQTT button is pressed once, pressed
+    twice, held or released. Leave any of them empty to ignore it.
   domain: automation
   author: soullink9
   source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/z2m_button/z2m_button.yaml
@@ -15,57 +14,64 @@ blueprint:
     min_version: "2026.11.0"
 
   input:
-    button_device:
-      name: Button Device
-      description: Select your Zigbee2MQTT button device.
-      selector:
-        device:
-          filter:
-            - integration: mqtt
+    section_button:
+      name: Button
+      icon: mdi:gesture-tap-button
+      input:
+        button_device:
+          name: Button
+          description: >-
+            Press each type once after pairing so Zigbee2MQTT learns it.
+          selector:
+            device:
+              filter:
+              - integration: mqtt
 
-    single_press_action:
-      name: Action – Single Press
-      default: []
-      selector:
-        action: {}
+        single_press_action:
+          name: Single press
+          default: []
+          selector:
+            action: {}
 
-    double_press_action:
-      name: Action – Double Press
-      default: []
-      selector:
-        action: {}
+        double_press_action:
+          name: Double press
+          default: []
+          selector:
+            action: {}
 
-    hold_action:
-      name: Action – Hold
-      default: []
-      selector:
-        action: {}
+        hold_action:
+          name: Hold
+          default: []
+          selector:
+            action: {}
 
-    release_action:
-      name: Action – Release (after hold)
-      description: >
-        Optional. Fires when the button is released following a hold.
-        Useful for "hold to dim/open, release to stop" style behavior.
-        Leave empty if your device doesn't emit a release event or you
-        don't need it.
-      default: []
-      selector:
-        action: {}
+        release_action:
+          name: Release after hold
+          description: >-
+            For "hold to dim, release to stop". Not every button sends this.
+          default: []
+          selector:
+            action: {}
 
-    automation_mode:
-      name: Automation Mode
-      description: >
-        How this automation handles overlapping triggers. "Restart" (default)
-        matches typical button behavior — a new press restarts the logic
-        rather than queuing behind a stale run.
-      default: restart
-      selector:
-        select:
-          options:
-            - "single"
-            - "restart"
-            - "queued"
-            - "parallel"
+    section_advanced:
+      name: Advanced
+      icon: mdi:cog
+      collapsed: true
+      input:
+        automation_mode:
+          name: When pressed again while running
+          default: restart
+          selector:
+            select:
+              options:
+              - label: Start over (recommended)
+                value: restart
+              - label: Ignore the new press
+                value: single
+              - label: Run after the current one
+                value: queued
+              - label: Run both at once
+                value: parallel
 
 triggers:
   - id: single_press

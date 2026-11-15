@@ -1,21 +1,13 @@
-# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.5.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Yardian – fail-safe lawn watering · v0.4.0
+  name: Lawn Watering – Yardian Fail-safe Schedule · v0.5.0
   description: >
-    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.5.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
-    Runs Yardian Local zones one at a time, either at a fixed time or timed to
-    finish before sunrise. Every zone is started with a duration so the
-    controller stops it on its own even if Home Assistant dies. Includes a late
-    start recovery window, rain / temperature / forecast skips, town watering
-    rules (allowed days, bans, drought level, pickup days), a per-zone
-    safety cap with watchdog, and optional notifications.
-    Never waters twice in a day, even after a crash or power cut, and picks up
-    a missed start when Home Assistant or the controller comes back in time.
-    Set a watering season (e.g. Apr 15 – Oct 15) to stop automatically for
-    winter, or turn this automation off to pause it at any time.
-    Requires the Yardian Local integration 1.1 or newer.
+    Waters your Yardian zones one at a time before sunrise or at a set time,
+    and skips days with rain, frost or local restrictions. Needs the Yardian
+    Local integration 1.1 or newer.
   domain: automation
   author: soullink9
   source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/yardian_lawn_schedule/yardian_lawn_schedule.yaml
@@ -27,322 +19,454 @@ blueprint:
       icon: mdi:sprinkler-variant
       input:
         zones:
-          name: Zones (in run order)
-          description: Run time per zone comes from each zone's "run time" number (0 = skip).
+          name: Zones
+          description: >-
+            In the order they should run. Each zone's run time is its own
+            run time setting from Yardian (0 skips it).
           selector:
             entity:
               multiple: true
               filter:
-                - integration: yardian_local
-                  domain: switch
+              - integration: yardian_local
+                domain: switch
+
         stop_button:
-          name: Stop-all button
+          name: Stop button
+          description: >-
+            The controller's "stop all" button.
           selector:
             entity:
               filter:
-                - integration: yardian_local
-                  domain: button
+              - integration: yardian_local
+                domain: button
+
         max_zone_minutes:
-          name: Max minutes per zone (safety cap)
-          description: No zone is ever started for longer than this, and any zone on longer than this (+2 min) is force-stopped.
+          name: Longest a zone may run
+          description: >-
+            A safety cap. A zone still on 2 minutes past it is stopped.
           default: 35
           selector:
-            number: {min: 5, max: 120, unit_of_measurement: min, mode: box}
+            number:
+              min: 5
+              max: 120
+              unit_of_measurement: min
+              mode: box
+
         zone_delay:
           name: Pause between zones
           default: 30
           selector:
-            number: {min: 0, max: 900, unit_of_measurement: s, mode: box}
+            number:
+              min: 0
+              max: 900
+              unit_of_measurement: s
+              mode: box
+
+        use_weather:
+          name: Skip watering for weather
+          default: true
+          selector:
+            boolean: {}
+
+        use_local_rules:
+          name: Follow local watering rules
+          default: true
+          selector:
+            boolean: {}
+
     schedule:
       name: Schedule
       icon: mdi:calendar-clock
       input:
         schedule_mode:
-          name: Start mode
+          name: Start
           default: sunrise
           selector:
             select:
               options:
-                - {label: "Finish before sunrise (start time is calculated)", value: sunrise}
-                - {label: "Fixed start time", value: fixed}
+              - label: Finish before sunrise
+                value: sunrise
+              - label: At a set time
+                value: fixed
+
         sunrise_offset:
+          name: Finish this long before sunrise
+          description: >-
+            Uses your home location. 0 = right at sunrise.
           visible:
             field: schedule_mode
             value: sunrise
-          name: Finish this long before sunrise
-          description: >-
-            Sunrise mode only. 0 = finish right at sunrise. Sunrise is
-            calculated from your home location in Settings > System > General
-            (accurate to about 2 minutes) – there's no sensor to pick. If the
-            cycle is so long it would have to start before midnight, it starts
-            at midnight.
           default: 30
           selector:
-            number: {min: 0, max: 240, unit_of_measurement: min, mode: box}
+            number:
+              min: 0
+              max: 240
+              unit_of_measurement: min
+              mode: box
+
         start_time:
+          name: Start time
           visible:
             field: schedule_mode
             value: fixed
-          name: Fixed start time
-          description: Fixed mode only.
           default: "04:00:00"
           selector:
             time: {}
+
         days:
-          name: Watering days
-          default: [mon, tue, wed, thu, fri, sat, sun]
+          name: Days
+          default:
+          - mon
+          - tue
+          - wed
+          - thu
+          - fri
+          - sat
+          - sun
           selector:
             select:
               multiple: true
               options:
-                - {label: Monday, value: mon}
-                - {label: Tuesday, value: tue}
-                - {label: Wednesday, value: wed}
-                - {label: Thursday, value: thu}
-                - {label: Friday, value: fri}
-                - {label: Saturday, value: sat}
-                - {label: Sunday, value: sun}
+              - label: Monday
+                value: mon
+              - label: Tuesday
+                value: tue
+              - label: Wednesday
+                value: wed
+              - label: Thursday
+                value: thu
+              - label: Friday
+                value: fri
+              - label: Saturday
+                value: sat
+              - label: Sunday
+                value: sun
+
         season_start:
           name: Season starts
           description: >-
-            First day of the watering season. Only the month and day are used,
-            the year is ignored. Leave Jan 1 – Dec 31 to water all year.
-            A range that crosses New Year (e.g. Oct 1 – Apr 30) also works.
+            Only the month and day are used.
           default: "2026-01-01"
           selector:
             date: {}
+
         season_end:
           name: Season ends
-          description: Last day of the watering season (month and day only).
+          description: >-
+            Leave Jan 1 – Dec 31 to water all year. Pause any time by
+            turning the automation off.
           default: "2026-12-31"
           selector:
             date: {}
-    recovery:
-      name: Recovery after Home Assistant downtime
-      icon: mdi:restart
-      input:
-        recovery_window:
-          name: Late-start window
-          description: >-
-            If Home Assistant or the controller comes back within this many
-            minutes after the scheduled start and today's cycle hasn't run, it
-            starts then. Later than that, today is skipped (and you're told).
-          default: 60
-          selector:
-            number: {min: 0, max: 240, unit_of_measurement: min, mode: box}
-        stop_on_startup:
-          name: Stop any running zone when HA starts
-          default: true
-          selector:
-            boolean: {}
+
     weather:
-      name: Weather skips (all optional)
-      description: >-
-        Leave any sensor empty to turn that check off. Sensor values are
-        converted automatically, so set the thresholds in the units you pick
-        below no matter what units your sensors report.
+      name: Weather
       icon: mdi:weather-pouring
-      collapsed: true
+      visible:
+        field: use_weather
+        value: true
       input:
         units:
-          name: Threshold units
+          name: Units for the limits below
+          description: >-
+            Sensor values are converted, whatever unit they report in.
           default: imperial
           selector:
             select:
               options:
-                - {label: "Imperial (inches, °F)", value: imperial}
-                - {label: "Metric (millimetres, °C)", value: metric}
+              - label: Imperial (inches, °F)
+                value: imperial
+              - label: Metric (millimetres, °C)
+                value: metric
+
         rain_total_sensor:
           name: Rain in the last day
           description: >-
-            A rain TOTAL covering roughly the past day, e.g. "Daily rain",
-            "24h rain" or "Rain last 24 hours" from a weather station.
-            Do not use event, hourly, weekly, monthly or yearly totals, and do
-            not use a rain rate here. Only precipitation sensors are listed.
-          default: ""
+            Optional. A daily or 24-hour rain total, not an hourly, weekly
+            or yearly one.
+          default: ''
           selector:
-            entity: {filter: [{domain: sensor, device_class: precipitation}]}
+            entity:
+              filter:
+              - domain: sensor
+                device_class: precipitation
+
         rain_total_max:
-          name: Skip if rain in the last day is at least
-          description: "Imperial default 0.25 in. Metric equivalent: about 6 mm."
+          name: Skip if it rained at least
+          description: >-
+            About 0.25 in or 6 mm.
           default: 0.25
           selector:
-            number: {min: 0, max: 100, step: 0.01, mode: box}
+            number:
+              min: 0
+              max: 100
+              step: 0.01
+              mode: box
+
         rain_rate_sensor:
-          name: Rain rate (is it raining now?)
+          name: Rain rate
           description: >-
-            A rain RATE / intensity sensor (in/h or mm/h), e.g. "Rain rate".
-            Checked at the start and again before every zone, so rain that
-            starts mid-cycle ends the cycle. Only precipitation-intensity
-            sensors are listed.
-          default: ""
+            Optional. Checked before every zone, so rain that starts mid-
+            cycle ends it.
+          default: ''
           selector:
-            entity: {filter: [{domain: sensor, device_class: precipitation_intensity}]}
+            entity:
+              filter:
+              - domain: sensor
+                device_class: precipitation_intensity
+
         rain_rate_max:
-          name: Skip if rain rate is above
-          description: 0 = skip on any rain at all.
+          name: Skip if raining harder than
+          description: >-
+            0 = skip on any rain.
           default: 0
           selector:
-            number: {min: 0, max: 100, step: 0.01, mode: box}
+            number:
+              min: 0
+              max: 100
+              step: 0.01
+              mode: box
+
         temp_sensor:
           name: Outdoor temperature
-          description: Your outdoor air temperature sensor (not an indoor or soil sensor).
-          default: ""
+          description: >-
+            Optional.
+          default: ''
           selector:
-            entity: {filter: [{domain: sensor, device_class: temperature}]}
+            entity:
+              filter:
+              - domain: sensor
+                device_class: temperature
+
         min_temp:
-          name: Skip if temperature (now or forecast) is below
-          description: "Imperial default 40 °F. Metric equivalent: about 4 °C."
+          name: Skip if colder than (now or forecast)
+          description: >-
+            About 40 °F or 4 °C.
           default: 40
           selector:
-            number: {min: -30, max: 100, step: 0.5, mode: box}
+            number:
+              min: -30
+              max: 100
+              step: 0.5
+              mode: box
+
         weather_entity:
           name: Forecast
           description: >-
-            A weather entity that provides an hourly forecast (e.g. Met.no,
-            NWS, OpenWeatherMap). Used for chance of rain, forecast rain and
-            forecast low temperature.
-          default: ""
+            Optional. A weather entity with an hourly forecast.
+          default: ''
           selector:
-            entity: {filter: [{domain: weather}]}
+            entity:
+              filter:
+              - domain: weather
+
         forecast_hours:
-          name: Forecast look-ahead
+          name: Look ahead
           default: 12
           selector:
-            number: {min: 1, max: 48, unit_of_measurement: h, mode: box}
+            number:
+              min: 1
+              max: 48
+              unit_of_measurement: h
+              mode: box
+
         forecast_probability:
-          name: Skip if chance of rain is at least
+          name: Skip if the chance of rain is at least
           default: 60
           selector:
-            number: {min: 0, max: 100, unit_of_measurement: "%", mode: box}
+            number:
+              min: 0
+              max: 100
+              unit_of_measurement: '%'
+              mode: box
+
         forecast_amount:
-          name: Skip if forecast rain total is at least
-          description: "Imperial default 0.25 in. Metric equivalent: about 6 mm."
+          name: Skip if the forecast rain is at least
+          description: >-
+            About 0.25 in or 6 mm.
           default: 0.25
           selector:
-            number: {min: 0, max: 100, step: 0.01, mode: box}
+            number:
+              min: 0
+              max: 100
+              step: 0.01
+              mode: box
+
     local_rules:
-      name: Local watering rules (all optional)
-      description: >-
-        Sensors from your town or water district. Leave any empty to turn that
-        check off. A sensor that is unavailable is ignored rather than
-        blocking watering.
+      name: Local watering rules
       icon: mdi:town-hall
-      collapsed: true
+      visible:
+        field: use_local_rules
+        value: true
       input:
         allowed_today_sensor:
           name: Watering allowed today
           description: >-
-            A binary sensor that is ON on days you're allowed to water and OFF
-            when you're not (odd/even or day-of-week rules). Watering is skipped
-            when it is OFF. This is the one to use if your town has watering days.
-          default: ""
+            Optional. A sensor that is on when your town allows watering
+            today.
+          default: ''
           selector:
-            entity: {filter: [{domain: binary_sensor}]}
+            entity:
+              filter:
+              - domain: binary_sensor
+
         odd_even:
-          name: Odd / even day rule
-          description: >-
-            For towns that only allow watering on odd or even dates. Use this
-            if you don't have a "watering allowed today" sensor. Works together
-            with Watering days: both must allow the day.
+          name: Odd or even dates
           default: any
           selector:
             select:
               options:
-                - {label: "Any date", value: any}
-                - {label: "Odd dates only (1st, 3rd, 5th…)", value: odd}
-                - {label: "Even dates only (2nd, 4th, 6th…)", value: even}
+              - label: Any date
+                value: any
+              - label: Odd dates only (1st, 3rd, 5th…)
+                value: odd
+              - label: Even dates only (2nd, 4th, 6th…)
+                value: even
+
         ban_sensor:
-          name: Total watering ban
+          name: Watering ban
           description: >-
-            A binary sensor that is ON only when ALL outdoor watering is banned.
-            Watering is skipped when it is ON. Don't use a "restrictions in
-            effect" sensor here if your town still allows watering on certain
-            days – use "Watering allowed today" for that.
-          default: ""
+            Optional. A sensor that is on only when all outdoor watering is
+            banned.
+          default: ''
           selector:
-            entity: {filter: [{domain: binary_sensor}]}
+            entity:
+              filter:
+              - domain: binary_sensor
+
         drought_sensor:
           name: Drought level
           description: >-
-            A sensor showing a US Drought Monitor level, e.g. "D1 Moderate
-            drought". Only the D0–D4 part is read.
-          default: ""
+            Optional. A US Drought Monitor sensor (D0 to D4).
+          default: ''
           selector:
-            entity: {filter: [{domain: sensor}]}
+            entity:
+              filter:
+              - domain: sensor
+
         drought_max:
-          name: Skip at or above drought level
-          default: "off"
+          name: Skip at or above
+          default: 'off'
           selector:
             select:
               options:
-                - {label: "Never skip for drought", value: "off"}
-                - {label: "D0 Abnormally dry", value: "0"}
-                - {label: "D1 Moderate", value: "1"}
-                - {label: "D2 Severe", value: "2"}
-                - {label: "D3 Extreme", value: "3"}
-                - {label: "D4 Exceptional", value: "4"}
+              - label: Never skip for drought
+                value: 'off'
+              - label: D0 Abnormally dry
+                value: '0'
+              - label: D1 Moderate
+                value: '1'
+              - label: D2 Severe
+                value: '2'
+              - label: D3 Extreme
+                value: '3'
+              - label: D4 Exceptional
+                value: '4'
+
         pickup_sensors:
           name: Skip on pickup days
           description: >-
-            Date sensors such as "Next trash pickup" or "Next yard waste
-            pickup". Watering is skipped on the day any of them shows, so bins
-            and crews at the curb don't get sprayed. Only date sensors are listed.
+            Optional. Date sensors such as "next trash pickup".
           default: []
           selector:
             entity:
               multiple: true
               filter:
-                - {domain: sensor, device_class: date}
-                - {domain: sensor, device_class: timestamp}
+              - domain: sensor
+                device_class: date
+              - domain: sensor
+                device_class: timestamp
+
+    recovery:
+      name: After an outage
+      icon: mdi:restart
+      collapsed: true
+      input:
+        recovery_window:
+          name: Start late if back within
+          description: >-
+            If Home Assistant or the controller was down at the start time
+            and comes back within this time, today's watering still runs.
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 240
+              unit_of_measurement: min
+              mode: box
+
+        stop_on_startup:
+          name: Stop any running zone when Home Assistant starts
+          default: true
+          selector:
+            boolean: {}
+
     notifications:
-      name: Notifications (optional)
+      name: Notifications
       icon: mdi:bell-outline
       collapsed: true
       input:
         notify_devices:
-          name: Phones / tablets
-          description: Devices with the Home Assistant Companion app. Pick as many as you like.
+          name: Phones
+          description: >-
+            Devices with the Home Assistant app.
           default: []
           selector:
             device:
               multiple: true
               filter:
-                - integration: mobile_app
-        notify_extra:
-          name: Other notify actions (optional, advanced)
-          description: >-
-            Only for non-app targets such as notify groups or Telegram, e.g.
-            notify.family. Separate several with commas. Most people leave this empty.
-          default: ""
-          selector:
-            text: {}
+              - integration: mobile_app
+
         notify_events:
-          name: Notify on
-          default: [start, finish, skip, fault, season]
+          name: Notify about
+          default:
+          - start
+          - finish
+          - skip
+          - fault
+          - season
           selector:
             select:
               multiple: true
               options:
-                - {label: Cycle started, value: start}
-                - {label: Cycle finished, value: finish}
-                - {label: "Skipped (rain, freeze, forecast, late recovery)", value: skip}
-                - {label: "Safety stop / fault", value: fault}
-                - {label: "Season start / end reminders", value: season}
+              - label: Cycle started
+                value: start
+              - label: Cycle finished
+                value: finish
+              - label: Skipped (rain, freeze, forecast, late recovery)
+                value: skip
+              - label: Safety stop / fault
+                value: fault
+              - label: Season start / end reminders
+                value: season
+
         reminder_days:
-          name: Season reminder lead time
+          name: Season reminder, days ahead
           description: >-
-            How many days before the season starts and ends to remind you
-            (turn the water on / shut it off and winterize). 0 = on the day.
-            Not sent if the season is Jan 1 – Dec 31.
+            A reminder to turn the water on or off. Not sent if you water
+            all year.
           default: 7
           selector:
-            number: {min: 0, max: 60, unit_of_measurement: days, mode: box}
+            number:
+              min: 0
+              max: 60
+              unit_of_measurement: days
+              mode: box
+
         reminder_time:
           name: Season reminder time
           default: "10:00:00"
           selector:
             time: {}
+
+        notify_extra:
+          name: Other notify actions
+          description: >-
+            Advanced. For example notify.family. Separate several with
+            commas.
+          default: ''
+          selector:
+            text: {}
 
 mode: parallel
 max: 5
@@ -401,6 +525,9 @@ triggers:
     at: !input reminder_time
 
 variables:
+  # Only used to show or hide settings; hidden sensors are empty, so their checks are off.
+  use_weather: !input use_weather
+  use_local_rules: !input use_local_rules
   zones: !input zones
   stop_button: !input stop_button
   cap: !input max_zone_minutes

@@ -1,63 +1,71 @@
-# Adaptive Light Controller
+# Adaptive Lights – Automatic Room Lighting
 
-Controls one room's lights. Every setting in Home Assistant has its own
-explanation, so this page covers how the pieces fit together.
+One automation per room. You answer three questions, and only the settings
+for your answers are shown.
 
-## How it decides
+## Setting it up
 
-1. **Ambient Logic (Sections 3–6)** combines up to three votes — Time
-   Window, Sun Position and Lux — into one ON/OFF answer using the preset
-   you pick.
-2. **Presence (Section 2, optional)** is the main trigger when set: presence
-   turns the lights on if Ambient Logic agrees, and clearing for the OFF
-   Delay turns them off.
-3. **Self-Healing (Section 10)** re-applies the Ambient Logic answer every 5
-   minutes, so a missed trigger fixes itself. With no presence sensors this
-   is what drives the lights.
-4. **Guards (Sections 8–9)** get the final say: Media Guard, Minimum Lux to
-   Keep ON, OFF Block Window, Block Entities and Manual Override.
+1. **Lights:** pick the room's lights, then choose how they turn on and off:
+   - **Motion or presence sensors:** lights come on when someone is there
+     (and the schedule allows it), and go off once nobody has been there
+     for the time you set.
+   - **A schedule only:** lights simply follow the schedule.
+2. **Presence** (sensors only): pick the sensors and how long the room must
+   be empty before the lights go off.
+3. **When lights should be on:** pick one rule. Only its settings appear.
 
-## When the lux sensor stops reporting
+| Rule | Settings shown |
+|---|---|
+| Any time someone is there (presence only) | none |
+| Between set times | From, Until |
+| When the sun is down | Sun counts as down below |
+| When the room is dark (light sensor) | Light sensor settings |
+| When the sun is down and the room is dark | Sun and light sensor settings |
+| Between set times, or when the sun is down and the room is dark | All three |
+| Between set times, when the sun is down, or when the room is dark | All three |
 
-Home Assistant keeps showing a sensor's last value after it stops sending.
-A weather station that goes quiet overnight would keep saying "dark" all
-morning (lights on in daylight), or one that dies in the afternoon would
-keep saying "bright" all night.
+That's a working setup. Everything below is optional and collapsed.
 
-- **Treat Lux Sensor As Dead After** (Section 5, default 30 minutes): if the
-  sensor hasn't reported for this long, its value is ignored.
-- **Use Sun Position When the Lux Sensor Is Dead** (Section 5, default on):
-  while the sensor is dead or unavailable, the sun casts the lux vote using
-  the Sun Elevation Threshold from Section 4.
+## Common setups
 
-The debug log line shows `lux_ok`, `lux_use_sun` and `lux_value`.
+- **Hallway or closet light:** presence sensors, "Any time someone is there".
+- **Living room in the evening:** presence sensors, "When the sun is down".
+- **Porch light:** schedule only, "When the sun is down".
+- **Night light:** schedule only, "Between set times".
 
-## Manual override and the automation's own clock
+## Optional sections
 
-Manual-override protection treats a change with no parent context as
-"manual" (physical switches look like this). Runs started by a clock —
-Self-Healing every 5 minutes and the Time Window, Quiet Hours and OFF Block
-Window times (only the ones that are turned on) — have no parent context either, so the automation's own
-clock-driven ON/OFF used to count as manual and block the opposite action
-for the whole Override Duration. Changes in the first 10 seconds of those
-minutes are now treated as the automation's own.
+- **Brightness and color:** bright and cool at midday, dim and warm after
+  sunset, with quiet hours that stay dim even after an early sunrise.
+  Lights that are already on fade slowly to match.
+- **Manual changes:** after someone switches a light by hand, the
+  automation leaves it alone for a while.
+- **Exceptions:** don't change the lights while media is playing, don't turn
+  on or off while certain sensors are on (for example "in bed"), or never
+  turn off during set hours.
+- **Advanced:** the 5-minute re-check and debug logging.
 
-Lights that drop off the Zigbee network and come back also have no parent
-context, so they can still briefly look like a manual change.
+## When the light sensor goes offline
 
-## Circadian brightness
+Home Assistant keeps showing a sensor's last value after it stops
+reporting. A light sensor that hasn't reported for **Treat the light
+sensor as offline after** (default 30 minutes) is ignored, and with **Use
+the sun while the light sensor is offline** on, the sun takes its place.
 
-When on, every automatic ON sets brightness and colour temperature from the
-sun's elevation, capped during Quiet Hours. Lights that are already on fade
-toward the target on each 5-minute check.
+## Manual changes and the automation's own timers
 
-## Only `light.*` targets
-
-To control a plain switch, wrap it first: **Settings → Devices & services →
-Helpers → Create helper → Switch as X → Light**.
+A change with no automation behind it looks manual (physical switches look
+like this). The automation's own timed runs look the same, so a change in
+the first 10 seconds of a 5-minute mark, or of one of your set times, is
+treated as the automation's own.
 
 ## Troubleshooting
 
-Turn on **Debug Logging** (Section 11). Each run writes one line to
-**Settings → System → Logs** with every vote and guard, so you can see why
-it did or didn't act.
+Turn on **Debug logging** under Advanced. Each run writes one line to
+**Settings → System → Logs** with every check, so you can see why it did or
+didn't act.
+
+## Only lights
+
+To control a plain switch, wrap it first: **Settings → Devices & services →
+Helpers → Create helper → Switch as X → Light**.

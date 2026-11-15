@@ -1,49 +1,42 @@
-# Curtains – Morning Open / Night Close
+# Curtains – Morning Open and Evening Close
 
-Opens curtains in the morning and closes them at night. Either side can be
-turned off on its own.
+Opens curtains in the morning and closes them in the evening. Either side
+can be turned off.
+
+## Setting it up
+
+1. **Curtains:** pick the curtains and turn on "Open in the morning" and/or
+   "Close in the evening".
+2. In **Morning** and **Evening**, choose what decides it:
+   - **It gets bright / dark (light sensor or sun, whichever is first)**
+   - **The sun rises / sets**
+   - **The light sensor reads bright / dark**
+
+   The light sensor settings only appear when a sensor is part of the
+   choice.
+3. Optionally set **Not before** and **Not after** for the morning, and a
+   time by which the curtains always open or close.
 
 ## How it decides
 
-- **Evening:** close when the illuminance sensor stays below the evening
-  threshold, or (optionally) when the sun drops below an elevation.
-- **Morning:** open when the sensor stays above the morning threshold, or
-  (optionally) when the sun rises above an elevation — only between the
-  **Earliest** and **Latest Allowed Time**.
-- **Failsafe times (optional):** force-close / force-open at a fixed time
-  no matter what the sensors say.
+Every time it runs, it re-reads the sensor and the sun and decides from
+what they say now. In the morning it only opens between **Not before** and
+**Not after**, so curtains you close later in the day stay closed.
 
-Triggers only wake the automation up. Every time it runs, it re-reads the
-sensor and the sun and decides from what they say *now*.
+## Reliability (collapsed)
 
-## Outer protections
-
-- **Re-check on restart:** re-evaluates on every Home Assistant start, so a
-  crossing that happened while HA was down still gets acted on.
-- **Periodic safety check:** every 15 minutes, checks whether the curtains
-  match current conditions.
-- **Treat Sensor As Dead After:** a sensor that hasn't reported for this
-  many minutes is ignored and the sun elevation thresholds take over, even
-  if the sun options are off. Home Assistant keeps showing a weather
-  station's last value when it stops sending, so without this a station
-  that went quiet overnight would keep saying "dark" all morning.
-- **Ignore Readings That Don't Match the Sun:** never closes on a "dark"
-  reading while the sun is above 10°, and never opens on a "bright" reading
-  while the sun is below -6°. Failsafe times ignore this.
-
-## Why there is a Latest Allowed Time
-
-Without an end to the morning window, the 15-minute check could open the
-curtains any time after the Earliest Allowed Time until midnight — for
-example 15 minutes after the evening failsafe closed them, if the sensor
-was stuck on a bright value. It also means curtains you close in the
-afternoon stay closed.
+- **Catch up after Home Assistant restarts**, and **Re-check every 15
+  minutes**: catch anything that was missed. Neither does anything if the
+  curtains are already right.
+- **Treat a light sensor as offline after:** Home Assistant keeps showing a
+  sensor's last value after it stops reporting. Past this time it's
+  ignored and the sun is used instead.
+- **Ignore light readings that don't match the sun:** never closes for
+  "dark" in full daylight or opens for "bright" at night.
 
 ## If the curtains move the wrong way
 
-The blueprint only ever calls `cover.open_cover` / `cover.close_cover` and
-reads the cover's `open` / `closed` state. If pressing **Open** on the
-curtain in Home Assistant closes it, or the state says `open` while it is
-closed, fix that on the device first (in Zigbee2MQTT: the device's
-*Settings (specific)* → `invert_cover`, or the motor's direction /
-calibration setting). The blueprint can't tell the difference.
+The blueprint only calls open and close and reads the curtain's open or
+closed state. If pressing **Open** in Home Assistant closes the curtain, fix
+that on the device first (in Zigbee2MQTT: the device's *Settings
+(specific)* → `invert_cover`, or the motor's direction setting).

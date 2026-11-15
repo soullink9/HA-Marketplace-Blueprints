@@ -1,15 +1,12 @@
-# HA-Marketplace-Blueprints v0.4.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.5.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Indoor Air Helper · v0.4.0
+  name: Indoor Air – HVAC Fan Boost · v0.5.0
   description: >
-    **Version 0.4.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.5.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
-    Watches your indoor air (CO₂, humidity, VOCs, PM2.5). When any sensor goes
-    above its limit, the HVAC fan is boosted. The boost lasts at least the
-    minimum time, then keeps running until every sensor drops back below its
-    limit (minus a small margin), and the fan is returned to the speed it was on
-    before. Every pollutant is optional.
+    Boosts the HVAC fan when CO₂, humidity, VOCs or PM2.5 get too high, then
+    puts the fan back once the air is clean.
   domain: automation
   author: soullink9
   source_url: https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/blueprints/hvac_indoor_air_helper/hvac_indoor_air_helper.yaml
@@ -18,163 +15,128 @@ blueprint:
 
   input:
     core:
-      name: HVAC and fan
+      name: Thermostat and what to watch
       icon: mdi:hvac
       input:
         climate_entity:
-          name: HVAC Thermostat
-          description: >
-            Thermostat to control. It must have fan speeds (a Fan Mode
-            setting in its card); if it doesn't, the boost fails with an
-            error in the automation's trace.
-          # No supported_features filter here: Home Assistant 2026.11 rejects
-          # climate.ClimateEntityFeature.FAN_MODE in the filter ("expected str
-          # ... Got None") and refuses to load the whole blueprint.
+          name: Thermostat
+          description: >-
+            It needs fan speeds (a fan mode setting on its card).
           selector:
             entity:
               filter:
-                - domain: climate
+              - domain: climate
 
-        boost_fan_mode:
-          name: Fan Speed When Boosting
-          description: >
-            Fan speed to use when the air is bad. If your thermostat uses a
-            different name (e.g. "med"), type it in.
-          default: high
-          selector:
-            select:
-              custom_value: true
-              options: [auto, low, medium, high]
-
-        normal_fan_mode:
-          visible:
-            field: do_reset
-            value: true
-          name: Fallback Fan Speed
-          description: >
-            Used when the previous fan speed can't be determined (for example,
-            the fan was already at the boost speed when the boost started).
-          default: auto
-          selector:
-            select:
-              custom_value: true
-              options: [auto, low, medium, high]
-
-        do_reset:
-          name: Return Fan Afterwards
-          description: Put the fan back to its previous speed once the air is clean.
-          default: true
-          selector:
-            boolean: {}
-
-        run_condition:
-          name: When to Boost
-          default: always
-          selector:
-            select:
-              options:
-                - label: Any time
-                  value: always
-                - label: Only when the system isn't off
-                  value: system_on
-                - label: Only while actively heating or cooling
-                  value: active
-
-        fan_only_when_off:
-          visible:
-            field: run_condition
-            value: always
-          name: Switch to Fan Only When System Is Off
-          description: >
-            Some thermostats ignore fan speed while the system is off. Turn this
-            on to switch to Fan Only mode during the boost and back to Off
-            afterwards. Only applies when "When to Boost" is "Any time", and
-            only if the thermostat offers a Fan Only mode.
-          default: false
-          selector:
-            boolean: {}
-
-    timing:
-      name: Timing
-      icon: mdi:timer-outline
-      collapsed: true
-      input:
-        trigger_delay:
-          name: Must Stay High For
-          description: Ignore short spikes. The reading must stay above the limit this long.
-          default:
-            minutes: 2
-          selector:
-            duration: {}
-
-        min_boost_time:
-          name: Minimum Boost Time
-          description: Keep the fan boosted at least this long, even if the air clears sooner.
-          default:
-            minutes: 30
-          selector:
-            duration: {}
-
-        restart_cleanup:
-          visible:
-            field: do_reset
-            value: true
-          name: Finish a Boost Cut Short by a Restart
-          description: >
-            A restart in the middle of a boost ends the run that would have
-            put the fan back, leaving it on the boost speed for good. When
-            this is on and Home Assistant starts with the fan at the boost
-            speed and the air already clean, the fan is set to the
-            Fallback Fan Speed (the speed from before the boost is lost in
-            a restart). If the air is still bad, the regular 10-minute
-            check picks the boost up again. Note: this also resets a boost
-            speed you picked yourself, if HA restarts while the air is
-            clean. Only acts when "Return Fan Afterwards" is on.
-          default: true
-          selector:
-            boolean: {}
-
-        clear_margin:
-          name: Clear Margin
-          description: >
-            The air counts as clean once every sensor is this far below its
-            limit. Stops the fan from flip-flopping near the limit
-            (10% means a 1000 ppm CO₂ limit clears at 900 ppm).
-          default: 10
-          selector:
-            number:
-              min: 0
-              max: 50
-              unit_of_measurement: "%"
-              mode: slider
-
-    co2:
-      name: CO₂
-      icon: mdi:molecule-co2
-      input:
         enable_co2:
           name: Watch CO₂
           default: true
           selector:
             boolean: {}
-        co2_sensors:
+
+        enable_humidity:
+          name: Watch humidity
+          default: false
+          selector:
+            boolean: {}
+
+        enable_voc:
+          name: Watch VOCs
+          default: false
+          selector:
+            boolean: {}
+
+        enable_pm25:
+          name: Watch PM2.5
+          default: false
+          selector:
+            boolean: {}
+
+    boost:
+      name: Fan boost
+      icon: mdi:fan
+      input:
+        boost_fan_mode:
+          name: Boost speed
+          description: >-
+            If your thermostat calls it something else, type that name.
+          default: high
+          selector:
+            select:
+              custom_value: true
+              options:
+              - auto
+              - low
+              - medium
+              - high
+
+        run_condition:
+          name: Boost
+          default: always
+          selector:
+            select:
+              options:
+              - label: Any time
+                value: always
+              - label: Only when the system isn't off
+                value: system_on
+              - label: Only while heating or cooling
+                value: active
+
+        fan_only_when_off:
+          name: Switch to fan only while the system is off
+          description: >-
+            For thermostats that ignore the fan speed while off.
           visible:
-            field: enable_co2
+            field: run_condition
+            value: always
+          default: false
+          selector:
+            boolean: {}
+
+        do_reset:
+          name: Put the fan back afterwards
+          default: true
+          selector:
+            boolean: {}
+
+        normal_fan_mode:
+          name: Fallback speed
+          description: >-
+            Used when the speed from before the boost isn't known.
+          visible:
+            field: do_reset
             value: true
-          name: CO₂ Sensors
+          default: auto
+          selector:
+            select:
+              custom_value: true
+              options:
+              - auto
+              - low
+              - medium
+              - high
+
+    co2:
+      name: CO₂
+      icon: mdi:molecule-co2
+      visible:
+        field: enable_co2
+        value: true
+      input:
+        co2_sensors:
+          name: Sensors
           default: []
           selector:
             entity:
               multiple: true
               filter:
-                - domain: sensor
-                  device_class: carbon_dioxide
+              - domain: sensor
+                device_class: carbon_dioxide
+
         co2_threshold:
-          visible:
-            field: enable_co2
-            value: true
-          name: CO₂ Limit
-          description: Air starts to feel stuffy above about 1000 ppm.
+          name: Boost above
+          description: >-
+            Air starts to feel stuffy above about 1000 ppm.
           default: 1000
           selector:
             number:
@@ -187,71 +149,55 @@ blueprint:
     humidity:
       name: Humidity
       icon: mdi:water-percent
-      collapsed: true
+      visible:
+        field: enable_humidity
+        value: true
       input:
-        enable_humidity:
-          name: Watch Humidity
-          default: false
-          selector:
-            boolean: {}
         humidity_sensors:
-          visible:
-            field: enable_humidity
-            value: true
-          name: Humidity Sensors
+          name: Sensors
           default: []
           selector:
             entity:
               multiple: true
               filter:
-                - domain: sensor
-                  device_class: humidity
+              - domain: sensor
+                device_class: humidity
+
         humidity_threshold:
-          visible:
-            field: enable_humidity
-            value: true
-          name: Humidity Limit
-          description: Mold risk rises above about 60%.
+          name: Boost above
+          description: >-
+            Mold risk rises above about 60%.
           default: 60
           selector:
             number:
               min: 30
               max: 100
-              unit_of_measurement: "%"
+              unit_of_measurement: '%'
               mode: slider
 
     voc:
       name: VOCs
       icon: mdi:air-filter
-      collapsed: true
+      visible:
+        field: enable_voc
+        value: true
       input:
-        enable_voc:
-          name: Watch VOCs
-          default: false
-          selector:
-            boolean: {}
         voc_sensors:
-          visible:
-            field: enable_voc
-            value: true
-          name: VOC Sensors
+          name: Sensors
           default: []
           selector:
             entity:
               multiple: true
               filter:
-                - domain: sensor
-                  device_class:
-                    - volatile_organic_compounds
-                    - volatile_organic_compounds_parts
+              - domain: sensor
+                device_class:
+                - volatile_organic_compounds
+                - volatile_organic_compounds_parts
+
         voc_threshold:
-          visible:
-            field: enable_voc
-            value: true
-          name: VOC Limit
-          description: >
-            In the sensor's own unit: ppb for most sensors, µg/m³ for some.
-            500 ppb is a common warning level.
+          name: Boost above
+          description: >-
+            In your sensor's unit. 500 ppb is a common warning level.
           default: 500
           selector:
             number:
@@ -262,38 +208,76 @@ blueprint:
     pm25:
       name: PM2.5
       icon: mdi:blur
-      collapsed: true
+      visible:
+        field: enable_pm25
+        value: true
       input:
-        enable_pm25:
-          name: Watch PM2.5
-          default: false
-          selector:
-            boolean: {}
         pm25_sensors:
-          visible:
-            field: enable_pm25
-            value: true
-          name: PM2.5 Sensors
+          name: Sensors
           default: []
           selector:
             entity:
               multiple: true
               filter:
-                - domain: sensor
-                  device_class: pm25
+              - domain: sensor
+                device_class: pm25
+
         pm25_threshold:
-          visible:
-            field: enable_pm25
-            value: true
-          name: PM2.5 Limit
-          description: The US 24-hour standard is 35 µg/m³.
+          name: Boost above
+          description: >-
+            The US 24-hour limit is 35 µg/m³.
           default: 35
           selector:
             number:
               min: 5
               max: 200
-              unit_of_measurement: "µg/m³"
+              unit_of_measurement: µg/m³
               mode: slider
+
+    timing:
+      name: Timing
+      icon: mdi:timer-outline
+      collapsed: true
+      input:
+        trigger_delay:
+          name: Must stay above the limit for
+          description: >-
+            Ignores short spikes.
+          default:
+            minutes: 2
+          selector:
+            duration: {}
+
+        min_boost_time:
+          name: Boost for at least
+          default:
+            minutes: 30
+          selector:
+            duration: {}
+
+        clear_margin:
+          name: Air is clean once below the limit by
+          description: >-
+            10% means a 1000 ppm limit clears at 900 ppm.
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 50
+              unit_of_measurement: '%'
+              mode: slider
+
+        restart_cleanup:
+          name: Finish a boost cut short by a restart
+          description: >-
+            If Home Assistant restarts mid-boost and the air is clean, sets
+            the fallback speed.
+          visible:
+            field: do_reset
+            value: true
+          default: true
+          selector:
+            boolean: {}
 
     notifications:
       name: Notifications
@@ -302,14 +286,16 @@ blueprint:
       input:
         notify_target:
           name: Notify
-          description: Phone or other notify entity. Leave empty for no notifications.
+          description: >-
+            A phone or other notify entity. Leave empty for none.
           default: {}
           selector:
             target:
               entity:
                 domain: notify
+
         notify_clear:
-          name: Also Notify When Air Is Clean
+          name: Also notify when the air is clean
           default: true
           selector:
             boolean: {}

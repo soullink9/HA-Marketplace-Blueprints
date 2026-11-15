@@ -1,17 +1,18 @@
-# Z2M Button – Single / Double / Hold (+ Release)
+# Zigbee2MQTT Button – Single, Double, Hold and Release
 
-Runs your own actions for each press type on a Zigbee2MQTT button.
+Runs your actions for each kind of press on a Zigbee2MQTT button.
 
-## Setup
+## Setting it up
 
-Pick the button's device, then fill in the actions you want. Leave any press
-type empty to ignore it.
+Pick the button, then fill in the actions you want. Leave any press type
+empty to ignore it.
 
 ## Notes
 
-- Zigbee2MQTT creates each press type's trigger the first time the button
-  sends it, so after pairing press each type once before relying on it.
+- Zigbee2MQTT learns each press type the first time the button sends it,
+  so after pairing, press each type once.
 - Buttons that use other action names (for example `on`, `off`,
-  `brightness_move_up`) aren't covered by this blueprint.
-- **Automation Mode** defaults to *Restart*, so a new press cancels a run
-  still in progress (useful for "hold to dim, release to stop").
+  `brightness_move_up`) aren't covered.
+- Under **Advanced**, "When pressed again while running" defaults to
+  **Start over**, so a new press cancels a run still in progress (useful
+  for "hold to dim, release to stop").

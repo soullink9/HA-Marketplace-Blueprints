@@ -19,49 +19,51 @@ before you point it at your lights, HVAC or water.
 
 ## Blueprints
 
-### Adaptive Light Controller
+### Adaptive Lights – Automatic Room Lighting
 
-One room's lights on presence and/or a time / sun / lux schedule, with
-circadian brightness, OFF guards and manual-override protection.
+Turns a room's lights on and off with presence sensors or a schedule, and
+can match brightness and color to the time of day.
 
 [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fsoullink9%2FHA-Marketplace-Blueprints%2Fblob%2Fmain%2Fblueprints%2Fadaptive_light_controller%2Fadaptive_light_controller.yaml)
 · [Docs](docs/adaptive_light_controller.md)
 
-### Curtains – Morning Open / Night Close
+### Curtains – Morning Open and Evening Close
 
-Opens curtains in the morning and closes them at night from an illuminance
-sensor and/or the sun, with restart, periodic and failsafe-time protection.
+Opens curtains in the morning and closes them in the evening, using a light
+sensor, the sun, or both.
 
 [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fsoullink9%2FHA-Marketplace-Blueprints%2Fblob%2Fmain%2Fblueprints%2Fopen_close_curtains%2Fopen_close_curtains.yaml)
 · [Docs](docs/open_close_curtains.md)
 
-### Indoor Air Helper (HVAC)
+### Indoor Air – HVAC Fan Boost
 
-Boosts the HVAC fan when CO₂, humidity, VOCs or PM2.5 go above a limit,
-then puts the fan back the way it was.
+Boosts the HVAC fan when CO₂, humidity, VOCs or PM2.5 get too high, then
+puts the fan back once the air is clean.
 
 [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fsoullink9%2FHA-Marketplace-Blueprints%2Fblob%2Fmain%2Fblueprints%2Fhvac_indoor_air_helper%2Fhvac_indoor_air_helper.yaml)
 · [Docs](docs/hvac_indoor_air_helper.md)
 
-### Humidity Automation (Fan Control + Shower Detection)
+### Bathroom Fan – Humidity and Shower Control
 
-Bathroom fan on high humidity or a fast rise (shower), off when the room
-dries out, with an optional whole-house ambient blocker.
+Runs the bathroom fan when you shower or the air gets humid, and turns it
+off once the room has dried out.
 
 [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fsoullink9%2FHA-Marketplace-Blueprints%2Fblob%2Fmain%2Fblueprints%2Fhumidity_control%2Fhumidity_control.yaml)
 · [Docs](docs/humidity_control.md)
 
-### Z2M Button – Single / Double / Hold (+ Release)
+### Zigbee2MQTT Button – Single, Double, Hold and Release
 
-Actions for single, double, hold and release on a Zigbee2MQTT button.
+Runs your actions when a Zigbee2MQTT button is pressed once, pressed twice,
+held or released.
 
 [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fsoullink9%2FHA-Marketplace-Blueprints%2Fblob%2Fmain%2Fblueprints%2Fz2m_button%2Fz2m_button.yaml)
 · [Docs](docs/z2m_button.md)
 
-### Yardian – Fail-safe Lawn Watering
+### Lawn Watering – Yardian Fail-safe Schedule
 
-Runs Yardian Local zones one at a time before sunrise or at a fixed time,
-with weather and town-rule skips. Needs the Yardian Local integration.
+Waters Yardian zones one at a time before sunrise or at a set time, and
+skips days with rain, frost or local restrictions. Needs the Yardian Local
+integration.
 
 [![Import blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fsoullink9%2FHA-Marketplace-Blueprints%2Fblob%2Fmain%2Fblueprints%2Fyardian_lawn_schedule%2Fyardian_lawn_schedule.yaml)
 · [Docs](docs/yardian_lawn_schedule.md)

@@ -2,6 +2,75 @@
 
 All blueprints share one version number.
 
+## 0.5.0
+
+Every blueprint has been reworked so it's quicker to set up. Input keys
+are unchanged unless listed under "Check after re-importing", so existing
+automations keep their settings.
+
+### All blueprints
+
+- New names, all in the form "Subject – What it does":
+  - Adaptive Light Controller → **Adaptive Lights – Automatic Room Lighting**
+  - Humidity Automation → **Bathroom Fan – Humidity and Shower Control**
+  - Indoor Air Helper → **Indoor Air – HVAC Fan Boost**
+  - Curtains – Morning Open / Night Close → **Curtains – Morning Open and
+    Evening Close**
+  - Z2M Button → **Zigbee2MQTT Button – Single, Double, Hold and Release**
+  - Yardian – Fail-safe Lawn Watering → **Lawn Watering – Yardian
+    Fail-safe Schedule**
+- Every setting and section has a short, plain-language name and
+  description, following the new [writing and layout guide](docs/STYLE.md).
+- Same layout everywhere. The first section covers what you have and what
+  you want it to do. Each feature then gets its own section, shown only
+  when the feature is on. Tuning and Advanced sections come last and start
+  collapsed.
+- Units are shown on the number settings (%, minutes, lx, K, °).
+
+### Adaptive Lights
+
+- Setup is now three questions: which lights, sensors or a schedule, and
+  when the lights should be on. Only the settings for your answers show.
+- The "Lights should be on" rule alone decides whether time, sun or light
+  sensor count. The separate **Use Time Window**, **Use Sun Position** and
+  **Use Brightness Sensor** switches are gone.
+- New rule: **Any time someone is there**, for presence-only rooms such as a
+  hallway or closet.
+- Exceptions (media, "don't turn on/off while", hours it never turns off)
+  and manual changes now have their own collapsed sections.
+
+### Bathroom Fan
+
+- One switch each for showers, high humidity and the humidifier, at the
+  top. Each one's section appears only when it's on.
+
+### Curtains
+
+- New **Open when** / **Close when** choice per side: light sensor or sun
+  (whichever is first), the sun, or the light sensor. This replaces **Also
+  Trigger On Sun Elevation**. The light sensor settings only show when a
+  sensor is part of the choice.
+
+### Indoor Air
+
+- The four "Watch …" switches are at the top. Each pollutant's section
+  appears only when it's on.
+
+### Lawn Watering
+
+- New **Skip watering for weather** and **Follow local watering rules**
+  switches (both on by default) show or hide those sections.
+
+### Check after re-importing
+
+- **Adaptive Lights:** if you had turned off Use Time Window, Use Sun
+  Position or Use Brightness Sensor, pick the "Lights should be on" rule
+  that matches what you want. The rule is now the only switch. Minimum
+  light level to keep lights on now only applies with a rule that uses the
+  light sensor.
+- **Curtains:** if you had turned off **Also Trigger On Sun Elevation**,
+  set **Open when** / **Close when** to "The light sensor reads …".
+
 ## 0.4.0
 
 ### All blueprints

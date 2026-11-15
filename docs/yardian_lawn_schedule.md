@@ -1,27 +1,29 @@
-# Yardian – Fail-safe Lawn Watering
+# Lawn Watering – Yardian Fail-safe Schedule
 
 Runs Yardian Local zones one at a time. Needs the Yardian Local integration
 1.1 or newer.
 
+## Setting it up
+
+1. **Controller:** pick the zones in the order they should run, and the
+   stop button. Turn weather skips and local rules on or off; their
+   sections only appear when they're on.
+2. **Schedule:** finish before sunrise or start at a set time, the days,
+   and the watering season.
+3. Fill in the sensors you have in **Weather** and **Local watering
+   rules**. Any you leave empty are simply not checked.
+
 ## Fail-safe by design
 
-- Every zone is started **with a duration**, so the controller stops it on
-  its own even if Home Assistant dies mid-cycle.
-- A watchdog stops any zone that stays on longer than the per-zone cap
-  plus 2 minutes.
+- Every zone is started with a duration, so the controller stops it even
+  if Home Assistant goes down mid-cycle.
+- A zone still on 2 minutes past the safety cap is stopped.
 - It never waters twice in a day, even after a crash or power cut.
-
-## Schedule
-
-- **Finish before sunrise:** the start time is worked out from your home
-  location and the total cycle length.
-- **Fixed start time:** starts at the time you set.
-- **Late-start window:** if Home Assistant or the controller comes back
-  within this many minutes after the start and today hasn't run yet, it
-  starts then.
+- If Home Assistant or the controller comes back within the late-start
+  window, today's watering still runs.
 
 ## Skips
 
-Rain in the last day, raining now, low temperature, forecast rain or cold,
-town watering days, a total ban, drought level, odd/even dates and pickup
-days. Every sensor is optional; an unavailable sensor never blocks watering.
+Rain in the last day, rain now, cold now or forecast, forecast rain, town
+watering days, a watering ban, drought level, odd or even dates, and pickup
+days. A sensor that's unavailable never blocks watering.
