@@ -1,6 +1,17 @@
 # Changelog
 
-All blueprints share one version number.
+Each release has a repo version (the git tag). A blueprint's own version
+only changes in releases that change that blueprint, so it shows the
+release it last changed in.
+
+## 0.6.1
+
+- Fixed: release 0.6.0 also raised the version shown on the five
+  blueprints that didn't change. Adaptive Lights, Indoor Air, Curtains,
+  Lawn Watering and Zigbee2MQTT Button show v0.5.0 again; their content is
+  identical to 0.5.0. Bathroom Fan stays at v0.6.0.
+- From now on, a blueprint's version only goes up in releases that change
+  it (see [docs](docs/README.md#versions)).
 
 ## 0.6.0
 

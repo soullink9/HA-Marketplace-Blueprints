@@ -56,9 +56,11 @@ New and changed blueprints follow the [writing and layout guide](STYLE.md).
 
 ## Versions
 
-All blueprints share one version number. It's shown in each blueprint's
-name in Home Assistant (for example "Bathroom Fan – Humidity and Shower
-Control · v0.5.0") and at the top of its description, so after a
-**Re-import blueprint** you can see at a glance which version you have.
-It's also on the first line of each file. It goes up together for every
-release, even for blueprints that didn't change.
+Each blueprint shows its version in its name in Home Assistant (for
+example "Bathroom Fan – Humidity and Shower Control · v0.6.0") and at the
+top of its description, so after a **Re-import blueprint** you can see at a
+glance which version you have. It's also on the first line of each file.
+
+A blueprint's version only goes up when that blueprint changes. It matches
+the release (git tag) it last changed in, so different blueprints can show
+different versions.

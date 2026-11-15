@@ -49,3 +49,8 @@ treat that default as "off" or "not used".
 - Never rename an input key. Change its name and description freely.
 - Every new input has a default.
 - Don't hide an input whose stored value still matters when it's hidden.
+
+## Versions
+
+- Only bump the version (first line, name and description) of blueprints
+  that changed in a release. Unchanged blueprints keep their version.
