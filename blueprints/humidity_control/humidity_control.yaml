@@ -1,8 +1,8 @@
-# HA-Marketplace-Blueprints v0.7.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.7.1 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Bathroom Fan – Humidity and Shower Control · v0.7.0
+  name: Bathroom Fan – Humidity and Shower Control · v0.7.1
   description: >
-    **Version 0.7.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.7.1** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
     Runs the bathroom fan when you shower or the air gets humid, and turns
@@ -558,6 +558,10 @@ variables:
   # ---- actions, or both.
   fan_entity: "{{ monitored_high_entity_var }}"
   humidifier_entity: "{{ monitored_low_entity_var }}"
+  # Real booleans: an `if:` template only counts true/on/yes/1 as true, so
+  # testing the entity id itself ("light.x") always reads as false.
+  has_fan: "{{ monitored_high_entity_var is not none }}"
+  has_humidifier: "{{ monitored_low_entity_var is not none }}"
   shower_fan_mode: !input shower_fan_mode
   high_fan_mode: !input high_fan_mode
   off_fan_mode: !input off_fan_mode
@@ -643,7 +647,7 @@ actions:
                   - "{{ h > high_threshold and (not a_ok or h >= a + ambient_min_difference) }}"
                   - "{{ not manual_override_blocks_high_on_var }}"
                 sequence:
-                  - if: "{{ high_fan_mode != 'actions' and fan_entity }}"
+                  - if: "{{ high_fan_mode != 'actions' and has_fan }}"
                     then:
                       - action: homeassistant.turn_on
                         target:
@@ -654,7 +658,7 @@ actions:
                   - "{{ h < high_exit or (a_ok and h < a + ambient_min_difference - deadband) }}"
                   - "{{ not manual_override_blocks_high_off_var }}"
                 sequence:
-                  - if: "{{ off_fan_mode != 'actions' and fan_entity }}"
+                  - if: "{{ off_fan_mode != 'actions' and has_fan }}"
                     then:
                       - action: homeassistant.turn_off
                         target:
@@ -668,7 +672,7 @@ actions:
                   - "{{ h < low_threshold }}"
                   - "{{ not manual_override_blocks_low_on_var }}"
                 sequence:
-                  - if: "{{ low_on_mode != 'actions' and humidifier_entity }}"
+                  - if: "{{ low_on_mode != 'actions' and has_humidifier }}"
                     then:
                       - action: homeassistant.turn_on
                         target:
@@ -679,7 +683,7 @@ actions:
                   - "{{ h > low_exit }}"
                   - "{{ not manual_override_blocks_low_off_var }}"
                 sequence:
-                  - if: "{{ low_off_mode != 'actions' and humidifier_entity }}"
+                  - if: "{{ low_off_mode != 'actions' and has_humidifier }}"
                     then:
                       - action: homeassistant.turn_off
                         target:
@@ -706,7 +710,7 @@ actions:
               - "{{ trigger.from_state is not none and is_number(trigger.from_state.state) }}"
               - "{{ not manual_override_blocks_high_off_var }}"
             sequence:
-              - if: "{{ off_fan_mode != 'actions' and fan_entity }}"
+              - if: "{{ off_fan_mode != 'actions' and has_fan }}"
                 then:
                   - action: homeassistant.turn_off
                     target:
@@ -722,7 +726,7 @@ actions:
                 id: low_on
               - "{{ not manual_override_blocks_low_on_var }}"
             sequence:
-              - if: "{{ low_on_mode != 'actions' and humidifier_entity }}"
+              - if: "{{ low_on_mode != 'actions' and has_humidifier }}"
                 then:
                   - action: homeassistant.turn_on
                     target:
@@ -736,7 +740,7 @@ actions:
               - "{{ trigger.from_state is not none and is_number(trigger.from_state.state) }}"
               - "{{ not manual_override_blocks_low_off_var }}"
             sequence:
-              - if: "{{ low_off_mode != 'actions' and humidifier_entity }}"
+              - if: "{{ low_off_mode != 'actions' and has_humidifier }}"
                 then:
                   - action: homeassistant.turn_off
                     target:
@@ -770,7 +774,7 @@ actions:
         then:
           - stop: Blocked by manual override
       - sequence:
-          - if: "{{ high_fan_mode != 'actions' and fan_entity }}"
+          - if: "{{ high_fan_mode != 'actions' and has_fan }}"
             then:
               - action: homeassistant.turn_on
                 target:
@@ -829,7 +833,7 @@ actions:
                 {{ states(humidity_sensor) }}% within
                 {{ shower_rise_window }} minutes.
       - sequence:
-          - if: "{{ shower_fan_mode != 'actions' and fan_entity }}"
+          - if: "{{ shower_fan_mode != 'actions' and has_fan }}"
             then:
               - action: homeassistant.turn_on
                 target:
@@ -907,7 +911,7 @@ actions:
             Humidity settled at {{ states(humidity_sensor) }}% (stopped falling,
             or back close to the rest of the house) — fan off.
   - sequence:
-      - if: "{{ off_fan_mode != 'actions' and fan_entity }}"
+      - if: "{{ off_fan_mode != 'actions' and has_fan }}"
         then:
           - action: homeassistant.turn_off
             target:

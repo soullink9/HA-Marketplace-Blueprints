@@ -4,6 +4,16 @@ Each release has a repo version (the git tag). A blueprint's own version
 only changes in releases that change that blueprint, so it shows the
 release it last changed in.
 
+## 0.7.1
+
+### Bathroom Fan (v0.7.1)
+
+- Fixed: since 0.7.0 the fan never switched on or off. Shower detection,
+  high humidity and the turn-off rules all decided correctly, then skipped
+  switching the fan. The humidifier was affected the same way. Your own
+  actions still ran. Re-import the blueprint to get the fix; no settings
+  change.
+
 ## 0.7.0
 
 ### Bathroom Fan (v0.7.0)
