@@ -50,6 +50,20 @@ version from this repo once. It then carries the `source_url`, and
 **Re-import blueprint** works on it from then on. The file path stays the
 same, so the automations using it don't need to change.
 
+## Good to know
+
+- **Your own actions** (in Bathroom Fan and Zigbee2MQTT Button) run with
+  the same rights as any automation, so they can do anything Home
+  Assistant can. Only paste actions you understand, and never ones from a
+  source you don't trust.
+- **Debug logging** (in Adaptive Lights and Bathroom Fan) writes entity
+  IDs and states to the Home Assistant log. Turn it off when you're done,
+  and check the log before sharing it.
+- **Updates** come from the `main` branch when you choose **Re-import
+  blueprint**. To stay on a fixed version, import from a release tag
+  instead, for example `…/blob/v0.8.0/blueprints/…`, and re-import from the
+  next tag after reading the [changelog](../CHANGELOG.md).
+
 ## Writing style
 
 New and changed blueprints follow the [writing and layout guide](STYLE.md).

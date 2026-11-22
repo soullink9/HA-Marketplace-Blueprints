@@ -31,4 +31,10 @@ can't tell that apart from a boost speed you picked yourself.
 
 Every thermostat is listed, so pick one with fan speeds (a fan mode setting
 on its card). If yours names its speeds differently (for example `med`),
-type the name in.
+type the name in. Upper and lower case don't matter.
+
+The boost and fallback speeds are checked against the speeds the
+thermostat offers. If it doesn't have one, or doesn't switch within a
+minute, nothing is assumed: you get a notification in Home Assistant (and
+on your phone if one is set) that lists the speeds it does have. If a boost
+can't start, a system it switched to fan only is turned back off.

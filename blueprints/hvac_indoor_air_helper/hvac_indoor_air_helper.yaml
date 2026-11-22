@@ -1,8 +1,8 @@
-# HA-Marketplace-Blueprints v0.5.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.8.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Indoor Air – HVAC Fan Boost · v0.5.0
+  name: Indoor Air – HVAC Fan Boost · v0.8.0
   description: >
-    **Version 0.5.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.8.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
     Boosts the HVAC fan when CO₂, humidity, VOCs or PM2.5 get too high, then
@@ -59,6 +59,7 @@ blueprint:
           name: Boost speed
           description: >-
             If your thermostat calls it something else, type that name.
+            You get an alert if the thermostat doesn't have it.
           default: high
           selector:
             select:
@@ -102,7 +103,8 @@ blueprint:
         normal_fan_mode:
           name: Fallback speed
           description: >-
-            Used when the speed from before the boost isn't known.
+            Used when the speed from before the boost isn't known. You get
+            an alert if the thermostat doesn't have it.
           visible:
             field: do_reset
             value: true
@@ -331,6 +333,7 @@ triggers:
   # Re-check periodically: catches air that was already bad after a restart,
   # or that went bad while the HVAC condition below wasn't met.
   - trigger: time_pattern
+    id: recheck
     minutes: "/10"
 
   # Clean up a boost that a restart cut short (see restart_cleanup).
@@ -377,9 +380,21 @@ variables:
   use_fan_only: >
     {{ fan_only_when_off and states(climate_entity) == 'off'
        and 'fan_only' in (state_attr(climate_entity, 'hvac_modes') or []) }}
+  # The speeds the thermostat offers. A typed speed is matched to one of
+  # them ignoring case, and is empty when the thermostat doesn't have it.
+  fan_modes: "{{ state_attr(climate_entity, 'fan_modes') or [] }}"
+  boost_mode: >
+    {% set ns = namespace(m='') %}
+    {% for m in fan_modes if m | string | lower == boost_fan_mode | string | trim | lower %}{% set ns.m = m %}{% endfor %}
+    {{ ns.m }}
+  normal_mode: >
+    {% set ns = namespace(m='') %}
+    {% for m in fan_modes if m | string | lower == normal_fan_mode | string | trim | lower %}{% set ns.m = m %}{% endfor %}
+    {{ ns.m }}
   restore_fan_mode: >
     {% set p = state_attr(climate_entity, 'fan_mode') %}
-    {{ p if p and p != boost_fan_mode else normal_fan_mode }}
+    {{ p if p and p | string != boost_mode | string else normal_mode }}
+  thermostat_name: "{{ state_attr(climate_entity, 'friendly_name') or climate_entity }}"
   has_notify: >
     {% set t = notify_target or {} %}
     {{ (t.get('entity_id') or t.get('device_id') or t.get('area_id') or []) | length > 0 }}
@@ -425,34 +440,117 @@ actions:
               {% endfor %}
             {% endfor %}
             {{ not ns.bad }}
-      - if: "{{ do_reset and air_clean and state_attr(climate_entity, 'fan_mode') == boost_fan_mode }}"
+          # The thermostat may not have listed its speeds when this run started.
+          fan_modes: "{{ state_attr(climate_entity, 'fan_modes') or [] }}"
+          boost_mode: >
+            {% set ns = namespace(m='') %}
+            {% for m in fan_modes if m | string | lower == boost_fan_mode | string | trim | lower %}{% set ns.m = m %}{% endfor %}
+            {{ ns.m }}
+          normal_mode: >
+            {% set ns = namespace(m='') %}
+            {% for m in fan_modes if m | string | lower == normal_fan_mode | string | trim | lower %}{% set ns.m = m %}{% endfor %}
+            {{ ns.m }}
+      - if: "{{ do_reset and air_clean and boost_mode != '' and state_attr(climate_entity, 'fan_mode') | string == boost_mode | string }}"
         then:
-          - action: climate.set_fan_mode
+          - if: "{{ normal_mode != '' }}"
+            then:
+              - action: climate.set_fan_mode
+                target:
+                  entity_id: "{{ climate_entity }}"
+                data:
+                  fan_mode: "{{ normal_mode }}"
+                continue_on_error: true
+              - wait_template: "{{ state_attr(climate_entity, 'fan_mode') | string == normal_mode | string }}"
+                timeout: "00:01:00"
+          - if: "{{ state_attr(climate_entity, 'fan_mode') | string != normal_mode | string or normal_mode == '' }}"
+            then:
+              - variables:
+                  problem: >-
+                    {% if normal_mode == '' %}
+                    After a restart, {{ thermostat_name }} was left on the boost speed, and it has no
+                    "{{ normal_fan_mode | trim }}" speed to go back to. It offers: {{ fan_modes | join(', ') or 'none' }}.
+                    Pick one of those as the fallback speed.
+                    {% else %}
+                    After a restart, {{ thermostat_name }} was left on the boost speed and didn't switch
+                    back to {{ normal_mode }}. Check the thermostat.
+                    {% endif %}
+              - action: persistent_notification.create
+                data:
+                  notification_id: "{{ this.entity_id }}_fan_speed"
+                  title: "Indoor air: fan speed problem"
+                  message: "{{ problem }}"
+              - if: "{{ has_notify }}"
+                then:
+                  - action: notify.send_message
+                    target: !input notify_target
+                    data:
+                      title: "Indoor air: fan speed problem"
+                      message: "{{ problem }}"
+                    continue_on_error: true
+      - stop: Restart clean-up done
+  # Only boost with a speed the thermostat has, and check that it took.
+  - if: "{{ boost_mode != '' }}"
+    then:
+      - if: "{{ use_fan_only }}"
+        then:
+          - action: climate.set_hvac_mode
             target:
               entity_id: "{{ climate_entity }}"
             data:
-              fan_mode: "{{ normal_fan_mode }}"
-      - stop: Restart clean-up done
-  - if: "{{ use_fan_only }}"
-    then:
-      - action: climate.set_hvac_mode
+              hvac_mode: fan_only
+            continue_on_error: true
+
+      - action: climate.set_fan_mode
         target:
           entity_id: "{{ climate_entity }}"
         data:
-          hvac_mode: fan_only
+          fan_mode: "{{ boost_mode }}"
+        continue_on_error: true
+      - wait_template: "{{ state_attr(climate_entity, 'fan_mode') | string == boost_mode | string }}"
+        timeout: "00:01:00"
 
-  - action: climate.set_fan_mode
-    target:
-      entity_id: "{{ climate_entity }}"
-    data:
-      fan_mode: "{{ boost_fan_mode }}"
+  - if: "{{ boost_mode == '' or state_attr(climate_entity, 'fan_mode') | string != boost_mode | string }}"
+    then:
+      # Don't leave the system in fan only for a boost that didn't happen.
+      - if: "{{ use_fan_only and states(climate_entity) == 'fan_only' }}"
+        then:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: "{{ climate_entity }}"
+            data:
+              hvac_mode: "off"
+            continue_on_error: true
+      - variables:
+          problem: >-
+            {% if boost_mode == '' %}
+            Couldn't boost the fan: {{ thermostat_name }} has no "{{ boost_fan_mode | trim }}" speed.
+            It offers: {{ fan_modes | join(', ') or 'none (is it offline?)' }}. Pick one of those as the boost speed.
+            {% else %}
+            Couldn't boost the fan: {{ thermostat_name }} didn't switch to {{ boost_mode }}. Check the thermostat.
+            {% endif %}
+      - action: persistent_notification.create
+        data:
+          notification_id: "{{ this.entity_id }}_fan_speed"
+          title: "Indoor air: fan speed problem"
+          message: "{{ problem }}"
+      # The 10-minute re-check would repeat this alert; only the first one goes to your phone.
+      - if: "{{ has_notify and trigger.id != 'recheck' }}"
+        then:
+          - action: notify.send_message
+            target: !input notify_target
+            data:
+              title: "Indoor air: fan speed problem"
+              message: "{{ problem }}"
+            continue_on_error: true
+      - stop: Fan didn't boost
+        error: true
 
   - if: "{{ has_notify }}"
     then:
       - action: notify.send_message
         target: !input notify_target
         data:
-          message: "Indoor air is poor: {{ bad | join(', ') }}. Fan boosted to {{ boost_fan_mode }}."
+          message: "Indoor air is poor: {{ bad | join(', ') }}. Fan boosted to {{ boost_mode }}."
 
   - delay: !input min_boost_time
 
@@ -467,13 +565,43 @@ actions:
       {{ not ns.bad }}
 
   # Only restore if nobody changed the fan in the meantime.
-  - if: "{{ do_reset and state_attr(climate_entity, 'fan_mode') == boost_fan_mode }}"
+  - if: "{{ do_reset and state_attr(climate_entity, 'fan_mode') | string == boost_mode | string }}"
     then:
-      - action: climate.set_fan_mode
-        target:
-          entity_id: "{{ climate_entity }}"
-        data:
-          fan_mode: "{{ restore_fan_mode }}"
+      - if: "{{ restore_fan_mode != '' }}"
+        then:
+          - action: climate.set_fan_mode
+            target:
+              entity_id: "{{ climate_entity }}"
+            data:
+              fan_mode: "{{ restore_fan_mode }}"
+            continue_on_error: true
+          - wait_template: "{{ state_attr(climate_entity, 'fan_mode') | string == restore_fan_mode | string }}"
+            timeout: "00:01:00"
+      - if: "{{ restore_fan_mode == '' or state_attr(climate_entity, 'fan_mode') | string != restore_fan_mode | string }}"
+        then:
+          - variables:
+              problem: >-
+                {% if restore_fan_mode == '' %}
+                The air is clean, but {{ thermostat_name }} has no "{{ normal_fan_mode | trim }}" speed to go back to,
+                so the fan is still on {{ boost_mode }}. It offers: {{ fan_modes | join(', ') }}. Pick one of
+                those as the fallback speed.
+                {% else %}
+                The air is clean, but {{ thermostat_name }} didn't switch back to {{ restore_fan_mode }}.
+                Check the thermostat.
+                {% endif %}
+          - action: persistent_notification.create
+            data:
+              notification_id: "{{ this.entity_id }}_fan_speed"
+              title: "Indoor air: fan speed problem"
+              message: "{{ problem }}"
+          - if: "{{ has_notify }}"
+            then:
+              - action: notify.send_message
+                target: !input notify_target
+                data:
+                  title: "Indoor air: fan speed problem"
+                  message: "{{ problem }}"
+                continue_on_error: true
 
   # Turn the system back off only if we switched it to Fan Only and it's still there.
   - if: "{{ do_reset and use_fan_only and states(climate_entity) == 'fan_only' }}"

@@ -63,7 +63,8 @@ treated as the automation's own.
 
 Turn on **Debug logging** under Advanced. Each run writes one line to
 **Settings → System → Logs** with every check, so you can see why it did or
-didn't act.
+didn't act. The lines include entity IDs and states, so turn it off when
+you're done and check the log before sharing it.
 
 ## Only lights
 

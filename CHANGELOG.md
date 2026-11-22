@@ -4,6 +4,42 @@ Each release has a repo version (the git tag). A blueprint's own version
 only changes in releases that change that blueprint, so it shows the
 release it last changed in.
 
+## 0.8.0
+
+Safety fixes from a security review.
+
+### Lawn Watering (v0.8.0)
+
+- Every stop is now checked. After the stop button is pressed, every zone
+  must read off within a minute. If one doesn't, it is switched off
+  directly. If water may still be running after that, you get a critical
+  alert on your phones (it sounds even in silent mode) and a notification
+  in Home Assistant. This alert is always sent, whatever "Notify about" is
+  set to.
+- Before each zone, it now checks again for a watering ban, cold and the
+  controller being offline, not only for rain. Any of these ends the cycle.
+- **Check after re-importing:** "Other notify actions" (a text box) is
+  replaced by **Other notification targets**, a picker for notify
+  entities. If you had typed names there, pick them again. Phones are
+  unchanged.
+
+### Indoor Air (v0.8.0)
+
+- The boost and fallback speeds are checked against the speeds your
+  thermostat offers (upper and lower case don't matter), and each change
+  is checked to have taken effect. If not, you get a notification in Home
+  Assistant, and on your phone if one is set, listing the speeds it does
+  have, instead of the automation assuming the fan changed. This also
+  covers putting the fan back after a restart.
+- If a boost can't start, a system it switched to fan only is turned back
+  off.
+
+### Docs
+
+- New "Good to know" notes: your own actions run with full automation
+  rights, debug logging writes entity IDs to the log, and how to stay on a
+  fixed release.
+
 ## 0.7.1
 
 ### Bathroom Fan (v0.7.1)

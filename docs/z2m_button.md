@@ -9,6 +9,9 @@ empty to ignore it.
 
 ## Notes
 
+- Your actions run with the same rights as any automation. Only paste
+  actions you understand, from a source you trust.
+
 - Zigbee2MQTT learns each press type the first time the button sends it,
   so after pairing, press each type once.
 - Buttons that use other action names (for example `on`, `off`,

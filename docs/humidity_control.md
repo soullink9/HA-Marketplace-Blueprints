@@ -29,6 +29,9 @@ a choice:
 The **My actions** box only appears when your actions are part of the
 choice. The humidifier works the same way.
 
+Your actions run with the same rights as any automation. Only paste
+actions you understand, from a source you trust.
+
 ## Shower detection
 
 A shower is a rise of at least the set amount (default 8%) within the set

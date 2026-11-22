@@ -1,8 +1,8 @@
-# HA-Marketplace-Blueprints v0.5.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.8.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Lawn Watering – Yardian Fail-safe Schedule · v0.5.0
+  name: Lawn Watering – Yardian Fail-safe Schedule · v0.8.0
   description: >
-    **Version 0.5.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.8.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
     Waters your Yardian zones one at a time before sunrise or at a set time,
@@ -459,14 +459,16 @@ blueprint:
           selector:
             time: {}
 
-        notify_extra:
-          name: Other notify actions
+        notify_entities:
+          name: Other notification targets
           description: >-
-            Advanced. For example notify.family. Separate several with
-            commas.
-          default: ''
+            Optional. For example a group or a messaging service.
+          default: []
           selector:
-            text: {}
+            entity:
+              multiple: true
+              filter:
+              - domain: notify
 
 mode: parallel
 max: 5
@@ -558,19 +560,17 @@ variables:
   forecast_probability: !input forecast_probability
   forecast_amount: !input forecast_amount
   notify_devices: !input notify_devices
-  notify_extra: !input notify_extra
+  notify_entities: !input notify_entities
+  # The phones' notify actions
   notify_targets: >-
     {%- set ns = namespace(t=[]) -%}
     {%- for d in notify_devices if device_attr(d, 'name') -%}
       {%- set ns.t = ns.t + ['notify.mobile_app_' ~ device_attr(d, 'name') | slugify] -%}
     {%- endfor -%}
-    {%- for x in notify_extra.split(',') | map('trim') | reject('eq', '') -%}
-      {%- set ns.t = ns.t + [x if x.startswith('notify.') else 'notify.' ~ x] -%}
-    {%- endfor -%}
     {{ ns.t }}
   notify_events: !input notify_events
   reminder_days: !input reminder_days
-  can_notify: "{{ notify_targets | count > 0 }}"
+  can_notify: "{{ notify_targets | count > 0 or notify_entities | count > 0 }}"
   reminder_msg: >-
     {%- set ns = namespace(m=[]) -%}
     {%- if trigger.id == 'reminder' -%}
@@ -603,23 +603,101 @@ actions:
       - action: button.press
         target: {entity_id: "{{ stop_button }}"}
         continue_on_error: true
+      # Make sure the water really stopped: wait for every zone to read off
+      - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+        timeout: "00:01:00"
+      - if: "{{ not wait.completed }}"
+        then:
+          # Second way to stop: switch the zones off directly
+          - action: switch.turn_off
+            target: {entity_id: "{{ zones | select('is_state', 'on') | list }}"}
+            continue_on_error: true
+          - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+            timeout: "00:01:00"
+          - if: "{{ not wait.completed }}"
+            then:
+              # Always sent, whatever "Notify about" is set to
+              - variables:
+                  n_title: "Sprinklers: water may still be running"
+                  n_msg: >-
+                    {{ zones | reject('is_state', 'off') | map('state_attr', 'friendly_name') | join(', ') }}
+                    did not turn off after the safety stop (pressed stop, then switched the zones off). Check the controller, and shut off the water if it's still running.
+              - action: persistent_notification.create
+                data:
+                  notification_id: "{{ this.entity_id }}_stop_failed"
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+              - repeat:
+                  for_each: "{{ notify_targets }}"
+                  sequence:
+                    - action: "{{ repeat.item }}"
+                      data:
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                        data:
+                          push:
+                            interruption-level: critical
+                            sound:
+                              name: default
+                              critical: 1
+                              volume: 1.0
+                          ttl: 0
+                          priority: high
+                          channel: alarm_stream
+                      continue_on_error: true
+              - if: "{{ notify_entities | count > 0 }}"
+                then:
+                  - action: notify.send_message
+                    target: {entity_id: "{{ notify_entities }}"}
+                    data:
+                      title: "{{ n_title }}"
+                      message: "{{ n_msg }}"
+                    continue_on_error: true
+              - stop: Water did not stop
+                error: true
       - if: "{{ can_notify and 'fault' in notify_events }}"
         then:
-          - action: yardian_local.notify
-            data:
-              targets: "{{ notify_targets }}"
-              title: "Sprinklers: safety stop"
-              message: "{{ state_attr(trigger.entity_id, 'friendly_name') }} ran longer than {{ cap }} min and was stopped."
+          - variables:
+              n_title: "Sprinklers: safety stop"
+              n_msg: "{{ state_attr(trigger.entity_id, 'friendly_name') }} ran longer than {{ cap }} min and was stopped."
+          - if: "{{ notify_targets | count > 0 }}"
+            then:
+              - action: yardian_local.notify
+                data:
+                  targets: "{{ notify_targets }}"
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+          - if: "{{ notify_entities | count > 0 }}"
+            then:
+              - action: notify.send_message
+                target: {entity_id: "{{ notify_entities }}"}
+                data:
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+                continue_on_error: true
       - stop: Watchdog stop
 
   # ---------- Season start / end reminder ----------
   - if: "{{ trigger.id == 'reminder' }}"
     then:
-      - action: yardian_local.notify
-        data:
-          targets: "{{ notify_targets }}"
-          title: "Sprinklers: season reminder"
-          message: "{{ reminder_msg }}"
+      - variables:
+          n_title: "Sprinklers: season reminder"
+          n_msg: "{{ reminder_msg }}"
+      - if: "{{ notify_targets | count > 0 }}"
+        then:
+          - action: yardian_local.notify
+            data:
+              targets: "{{ notify_targets }}"
+              title: "{{ n_title }}"
+              message: "{{ n_msg }}"
+      - if: "{{ notify_entities | count > 0 }}"
+        then:
+          - action: notify.send_message
+            target: {entity_id: "{{ notify_entities }}"}
+            data:
+              title: "{{ n_title }}"
+              message: "{{ n_msg }}"
+            continue_on_error: true
       - stop: Season reminder sent
 
   # ---------- HA just started: wait for entities, clear any running zone ----------
@@ -634,13 +712,78 @@ actions:
           - action: button.press
             target: {entity_id: "{{ stop_button }}"}
             continue_on_error: true
+          # Make sure the water really stopped: wait for every zone to read off
+          - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+            timeout: "00:01:00"
+          - if: "{{ not wait.completed }}"
+            then:
+              # Second way to stop: switch the zones off directly
+              - action: switch.turn_off
+                target: {entity_id: "{{ zones | select('is_state', 'on') | list }}"}
+                continue_on_error: true
+              - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+                timeout: "00:01:00"
+              - if: "{{ not wait.completed }}"
+                then:
+                  # Always sent, whatever "Notify about" is set to
+                  - variables:
+                      n_title: "Sprinklers: water may still be running"
+                      n_msg: >-
+                        {{ zones | reject('is_state', 'off') | map('state_attr', 'friendly_name') | join(', ') }}
+                        did not turn off when Home Assistant started (pressed stop, then switched the zones off). Check the controller, and shut off the water if it's still running.
+                  - action: persistent_notification.create
+                    data:
+                      notification_id: "{{ this.entity_id }}_stop_failed"
+                      title: "{{ n_title }}"
+                      message: "{{ n_msg }}"
+                  - repeat:
+                      for_each: "{{ notify_targets }}"
+                      sequence:
+                        - action: "{{ repeat.item }}"
+                          data:
+                            title: "{{ n_title }}"
+                            message: "{{ n_msg }}"
+                            data:
+                              push:
+                                interruption-level: critical
+                                sound:
+                                  name: default
+                                  critical: 1
+                                  volume: 1.0
+                              ttl: 0
+                              priority: high
+                              channel: alarm_stream
+                          continue_on_error: true
+                  - if: "{{ notify_entities | count > 0 }}"
+                    then:
+                      - action: notify.send_message
+                        target: {entity_id: "{{ notify_entities }}"}
+                        data:
+                          title: "{{ n_title }}"
+                          message: "{{ n_msg }}"
+                        continue_on_error: true
+                  - stop: Water did not stop
+                    error: true
           - if: "{{ can_notify and 'fault' in notify_events }}"
             then:
-              - action: yardian_local.notify
-                data:
-                  targets: "{{ notify_targets }}"
-                  title: "Sprinklers: stopped at startup"
-                  message: "Water was running when Home Assistant started, so it was stopped."
+              - variables:
+                  n_title: "Sprinklers: stopped at startup"
+                  n_msg: "Water was running when Home Assistant started, so it was stopped."
+              - if: "{{ notify_targets | count > 0 }}"
+                then:
+                  - action: yardian_local.notify
+                    data:
+                      targets: "{{ notify_targets }}"
+                      title: "{{ n_title }}"
+                      message: "{{ n_msg }}"
+              - if: "{{ notify_entities | count > 0 }}"
+                then:
+                  - action: notify.send_message
+                    target: {entity_id: "{{ notify_entities }}"}
+                    data:
+                      title: "{{ n_title }}"
+                      message: "{{ n_msg }}"
+                    continue_on_error: true
 
   # ---------- Today's scheduled start, and whether today is already handled ----------
   - variables:
@@ -683,11 +826,24 @@ actions:
     then:
       - if: "{{ can_notify and 'fault' in notify_events }}"
         then:
-          - action: yardian_local.notify
-            data:
-              targets: "{{ notify_targets }}"
-              title: "Sprinklers: can't schedule"
-              message: "Finish-before-sunrise needs your home location (Settings > System > General), or use a fixed start time."
+          - variables:
+              n_title: "Sprinklers: can't schedule"
+              n_msg: "Finish-before-sunrise needs your home location (Settings > System > General), or use a fixed start time."
+          - if: "{{ notify_targets | count > 0 }}"
+            then:
+              - action: yardian_local.notify
+                data:
+                  targets: "{{ notify_targets }}"
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+          - if: "{{ notify_entities | count > 0 }}"
+            then:
+              - action: notify.send_message
+                target: {entity_id: "{{ notify_entities }}"}
+                data:
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+                continue_on_error: true
       - stop: No home location
   # Silent exits: not a watering day, out of season, before start, another run busy, already watered/decided
   - condition: template
@@ -705,13 +861,26 @@ actions:
     then:
       - if: "{{ can_notify and 'skip' in notify_events }}"
         then:
-          - action: yardian_local.notify
-            data:
-              targets: "{{ notify_targets }}"
-              title: "Sprinklers: skipped today"
-              message: >-
+          - variables:
+              n_title: "Sprinklers: skipped today"
+              n_msg: >-
                 {{ 'Home Assistant' if trigger.id == 'ha_start' else 'The controller' }} came back at
                 {{ now().strftime('%H:%M') }}, past the {{ recovery_window }}-min window after the {{ start_hm }} start.
+          - if: "{{ notify_targets | count > 0 }}"
+            then:
+              - action: yardian_local.notify
+                data:
+                  targets: "{{ notify_targets }}"
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+          - if: "{{ notify_entities | count > 0 }}"
+            then:
+              - action: notify.send_message
+                target: {entity_id: "{{ notify_entities }}"}
+                data:
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+                continue_on_error: true
       - stop: Past recovery window
   # Controller offline right now: wait for it, but not past the recovery window
   - if: "{{ is_state(stop_button, 'unavailable') }}"
@@ -723,11 +892,24 @@ actions:
         then:
           - if: "{{ can_notify and 'skip' in notify_events }}"
             then:
-              - action: yardian_local.notify
-                data:
-                  targets: "{{ notify_targets }}"
-                  title: "Sprinklers: skipped today"
-                  message: "The controller was offline from the {{ start_hm }} start through the {{ recovery_window }}-min recovery window."
+              - variables:
+                  n_title: "Sprinklers: skipped today"
+                  n_msg: "The controller was offline from the {{ start_hm }} start through the {{ recovery_window }}-min recovery window."
+              - if: "{{ notify_targets | count > 0 }}"
+                then:
+                  - action: yardian_local.notify
+                    data:
+                      targets: "{{ notify_targets }}"
+                      title: "{{ n_title }}"
+                      message: "{{ n_msg }}"
+              - if: "{{ notify_entities | count > 0 }}"
+                then:
+                  - action: notify.send_message
+                    target: {entity_id: "{{ notify_entities }}"}
+                    data:
+                      title: "{{ n_title }}"
+                      message: "{{ n_msg }}"
+                    continue_on_error: true
           - stop: Controller offline
 
   # ---------- Weather and local rules (values converted to the chosen units) ----------
@@ -806,11 +988,24 @@ actions:
     then:
       - if: "{{ can_notify and 'skip' in notify_events }}"
         then:
-          - action: yardian_local.notify
-            data:
-              targets: "{{ notify_targets }}"
-              title: "Sprinklers: skipped today"
-              message: "Skipped: {{ reasons | join(', ') }}."
+          - variables:
+              n_title: "Sprinklers: skipped today"
+              n_msg: "Skipped: {{ reasons | join(', ') }}."
+          - if: "{{ notify_targets | count > 0 }}"
+            then:
+              - action: yardian_local.notify
+                data:
+                  targets: "{{ notify_targets }}"
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+          - if: "{{ notify_entities | count > 0 }}"
+            then:
+              - action: notify.send_message
+                target: {entity_id: "{{ notify_entities }}"}
+                data:
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+                continue_on_error: true
       - stop: Weather skip
 
   # ---------- Build the run list ----------
@@ -826,27 +1021,104 @@ actions:
     then:
       - if: "{{ can_notify and 'fault' in notify_events }}"
         then:
-          - action: yardian_local.notify
-            data:
-              targets: "{{ notify_targets }}"
-              title: "Sprinklers: nothing to run"
-              message: "No zone is available with a run time above 0 – is the controller reachable?"
+          - variables:
+              n_title: "Sprinklers: nothing to run"
+              n_msg: "No zone is available with a run time above 0 – is the controller reachable?"
+          - if: "{{ notify_targets | count > 0 }}"
+            then:
+              - action: yardian_local.notify
+                data:
+                  targets: "{{ notify_targets }}"
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+          - if: "{{ notify_entities | count > 0 }}"
+            then:
+              - action: notify.send_message
+                target: {entity_id: "{{ notify_entities }}"}
+                data:
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+                continue_on_error: true
       - stop: Nothing to run
   - if: "{{ zones | select('is_state', 'on') | list | count > 0 }}"
     then:
       - action: button.press
         target: {entity_id: "{{ stop_button }}"}
         continue_on_error: true
-      - delay: {seconds: 5}
+      # Make sure the water really stopped: wait for every zone to read off
+      - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+        timeout: "00:01:00"
+      - if: "{{ not wait.completed }}"
+        then:
+          # Second way to stop: switch the zones off directly
+          - action: switch.turn_off
+            target: {entity_id: "{{ zones | select('is_state', 'on') | list }}"}
+            continue_on_error: true
+          - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+            timeout: "00:01:00"
+          - if: "{{ not wait.completed }}"
+            then:
+              # Always sent, whatever "Notify about" is set to
+              - variables:
+                  n_title: "Sprinklers: water may still be running"
+                  n_msg: >-
+                    {{ zones | reject('is_state', 'off') | map('state_attr', 'friendly_name') | join(', ') }}
+                    did not turn off before the cycle started (pressed stop, then switched the zones off). Check the controller, and shut off the water if it's still running.
+              - action: persistent_notification.create
+                data:
+                  notification_id: "{{ this.entity_id }}_stop_failed"
+                  title: "{{ n_title }}"
+                  message: "{{ n_msg }}"
+              - repeat:
+                  for_each: "{{ notify_targets }}"
+                  sequence:
+                    - action: "{{ repeat.item }}"
+                      data:
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                        data:
+                          push:
+                            interruption-level: critical
+                            sound:
+                              name: default
+                              critical: 1
+                              volume: 1.0
+                          ttl: 0
+                          priority: high
+                          channel: alarm_stream
+                      continue_on_error: true
+              - if: "{{ notify_entities | count > 0 }}"
+                then:
+                  - action: notify.send_message
+                    target: {entity_id: "{{ notify_entities }}"}
+                    data:
+                      title: "{{ n_title }}"
+                      message: "{{ n_msg }}"
+                    continue_on_error: true
+              - stop: Water did not stop
+                error: true
   - if: "{{ can_notify and 'start' in notify_events }}"
     then:
-      - action: yardian_local.notify
-        data:
-          targets: "{{ notify_targets }}"
-          title: "Sprinklers: started"
-          message: >-
+      - variables:
+          n_title: "Sprinklers: started"
+          n_msg: >-
             {{ 'Late start, ' if trigger.id != 'schedule' else '' }}{{ run_list | count }} zones,
             {{ run_list | sum(attribute='m') }} min of watering.
+      - if: "{{ notify_targets | count > 0 }}"
+        then:
+          - action: yardian_local.notify
+            data:
+              targets: "{{ notify_targets }}"
+              title: "{{ n_title }}"
+              message: "{{ n_msg }}"
+      - if: "{{ notify_entities | count > 0 }}"
+        then:
+          - action: notify.send_message
+            target: {entity_id: "{{ notify_entities }}"}
+            data:
+              title: "{{ n_title }}"
+              message: "{{ n_msg }}"
+            continue_on_error: true
 
   # ---------- Run zones one at a time ----------
   - repeat:
@@ -855,16 +1127,50 @@ actions:
         - if: "{{ repeat.index > 1 }}"
           then:
             - delay: {seconds: "{{ delay_s | int }}"}
-            - if: "{{ rain_rate != '' and states(rain_rate) | is_number and states(rain_rate) | float * rr_f | float > rain_rate_max | float }}"
+        # Re-check right before every zone: a long cycle can outlast the checks at the start
+        - variables:
+            controller_down: "{{ is_state(stop_button, 'unavailable') or is_state(repeat.item.e, 'unavailable') }}"
+            halt: >-
+              {%- set r = [] -%}
+              {%- if controller_down -%}{%- set r = r + ['the controller is offline'] -%}{%- endif -%}
+              {%- if rain_rate and states(rain_rate) | is_number and states(rain_rate) | float * rr_f | float > rain_rate_max | float -%}
+                {%- set r = r + ['it started raining'] -%}
+              {%- endif -%}
+              {%- if ban and is_state(ban, 'on') -%}
+                {%- set r = r + ['a watering ban started (' ~ state_attr(ban, 'friendly_name') ~ ')'] -%}
+              {%- endif -%}
+              {%- if temp and states(temp) | is_number -%}
+                {%- set raw = states(temp) | float -%}
+                {%- set c = (raw - 32) * 5 / 9 if 'f' in (state_attr(temp, 'unit_of_measurement') or '') | lower else raw -%}
+                {%- set v = c * 9 / 5 + 32 if units == 'imperial' else c -%}
+                {%- if v < min_temp | float -%}{%- set r = r + ['it got too cold (' ~ v | round(1) ~ tu ~ ')'] -%}{%- endif -%}
+              {%- endif -%}
+              {{ r }}
+        - if: "{{ halt | count > 0 }}"
+          then:
+            - if: "{{ can_notify and ('fault' if controller_down else 'skip') in notify_events }}"
               then:
-                - if: "{{ can_notify and 'skip' in notify_events }}"
+                - variables:
+                    n_title: "Sprinklers: stopped early"
+                    n_msg: >-
+                      {{ 'Did not start' if repeat.index == 1 else 'Ended the cycle after ' ~ (repeat.index - 1) ~ ' of ' ~ (run_list | count) ~ ' zones' }}:
+                      {{ halt | join(', ') }}.
+                - if: "{{ notify_targets | count > 0 }}"
                   then:
                     - action: yardian_local.notify
                       data:
                         targets: "{{ notify_targets }}"
-                        title: "Sprinklers: stopped for rain"
-                        message: "Rain started; ended the cycle after {{ repeat.index - 1 }} of {{ run_list | count }} zones."
-                - stop: Rain mid-cycle
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                - if: "{{ notify_entities | count > 0 }}"
+                  then:
+                    - action: notify.send_message
+                      target: {entity_id: "{{ notify_entities }}"}
+                      data:
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                      continue_on_error: true
+            - stop: Stopped before a zone
         - action: yardian_local.start_irrigation
           target: {entity_id: "{{ repeat.item.e }}"}
           data: {duration: "{{ repeat.item.m }}"}
@@ -876,13 +1182,78 @@ actions:
             - action: button.press
               target: {entity_id: "{{ stop_button }}"}
               continue_on_error: true
+            # Make sure the water really stopped: wait for every zone to read off
+            - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+              timeout: "00:01:00"
+            - if: "{{ not wait.completed }}"
+              then:
+                # Second way to stop: switch the zones off directly
+                - action: switch.turn_off
+                  target: {entity_id: "{{ zones | select('is_state', 'on') | list }}"}
+                  continue_on_error: true
+                - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+                  timeout: "00:01:00"
+                - if: "{{ not wait.completed }}"
+                  then:
+                    # Always sent, whatever "Notify about" is set to
+                    - variables:
+                        n_title: "Sprinklers: water may still be running"
+                        n_msg: >-
+                          {{ zones | reject('is_state', 'off') | map('state_attr', 'friendly_name') | join(', ') }}
+                          did not turn off after a zone failed to start (pressed stop, then switched the zones off). Check the controller, and shut off the water if it's still running.
+                    - action: persistent_notification.create
+                      data:
+                        notification_id: "{{ this.entity_id }}_stop_failed"
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                    - repeat:
+                        for_each: "{{ notify_targets }}"
+                        sequence:
+                          - action: "{{ repeat.item }}"
+                            data:
+                              title: "{{ n_title }}"
+                              message: "{{ n_msg }}"
+                              data:
+                                push:
+                                  interruption-level: critical
+                                  sound:
+                                    name: default
+                                    critical: 1
+                                    volume: 1.0
+                                ttl: 0
+                                priority: high
+                                channel: alarm_stream
+                            continue_on_error: true
+                    - if: "{{ notify_entities | count > 0 }}"
+                      then:
+                        - action: notify.send_message
+                          target: {entity_id: "{{ notify_entities }}"}
+                          data:
+                            title: "{{ n_title }}"
+                            message: "{{ n_msg }}"
+                          continue_on_error: true
+                    - stop: Water did not stop
+                      error: true
             - if: "{{ can_notify and 'fault' in notify_events }}"
               then:
-                - action: yardian_local.notify
-                  data:
-                    targets: "{{ notify_targets }}"
-                    title: "Sprinklers: fault"
-                    message: "{{ state_attr(repeat.item.e, 'friendly_name') }} did not start; cycle aborted. Check the controller."
+                - variables:
+                    n_title: "Sprinklers: fault"
+                    n_msg: "{{ state_attr(repeat.item.e, 'friendly_name') }} did not start; cycle aborted. Check the controller."
+                - if: "{{ notify_targets | count > 0 }}"
+                  then:
+                    - action: yardian_local.notify
+                      data:
+                        targets: "{{ notify_targets }}"
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                - if: "{{ notify_entities | count > 0 }}"
+                  then:
+                    - action: notify.send_message
+                      target: {entity_id: "{{ notify_entities }}"}
+                      data:
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                      continue_on_error: true
             - stop: Zone did not start
         - wait_template: "{{ is_state(repeat.item.e, 'off') }}"
           timeout:
@@ -892,19 +1263,97 @@ actions:
             - action: button.press
               target: {entity_id: "{{ stop_button }}"}
               continue_on_error: true
+            # Make sure the water really stopped: wait for every zone to read off
+            - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+              timeout: "00:01:00"
+            - if: "{{ not wait.completed }}"
+              then:
+                # Second way to stop: switch the zones off directly
+                - action: switch.turn_off
+                  target: {entity_id: "{{ zones | select('is_state', 'on') | list }}"}
+                  continue_on_error: true
+                - wait_template: "{{ zones | reject('is_state', 'off') | list | count == 0 }}"
+                  timeout: "00:01:00"
+                - if: "{{ not wait.completed }}"
+                  then:
+                    # Always sent, whatever "Notify about" is set to
+                    - variables:
+                        n_title: "Sprinklers: water may still be running"
+                        n_msg: >-
+                          {{ zones | reject('is_state', 'off') | map('state_attr', 'friendly_name') | join(', ') }}
+                          did not turn off after a zone ran too long (pressed stop, then switched the zones off). Check the controller, and shut off the water if it's still running.
+                    - action: persistent_notification.create
+                      data:
+                        notification_id: "{{ this.entity_id }}_stop_failed"
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                    - repeat:
+                        for_each: "{{ notify_targets }}"
+                        sequence:
+                          - action: "{{ repeat.item }}"
+                            data:
+                              title: "{{ n_title }}"
+                              message: "{{ n_msg }}"
+                              data:
+                                push:
+                                  interruption-level: critical
+                                  sound:
+                                    name: default
+                                    critical: 1
+                                    volume: 1.0
+                                ttl: 0
+                                priority: high
+                                channel: alarm_stream
+                            continue_on_error: true
+                    - if: "{{ notify_entities | count > 0 }}"
+                      then:
+                        - action: notify.send_message
+                          target: {entity_id: "{{ notify_entities }}"}
+                          data:
+                            title: "{{ n_title }}"
+                            message: "{{ n_msg }}"
+                          continue_on_error: true
+                    - stop: Water did not stop
+                      error: true
             - if: "{{ can_notify and 'fault' in notify_events }}"
               then:
-                - action: yardian_local.notify
-                  data:
-                    targets: "{{ notify_targets }}"
-                    title: "Sprinklers: safety stop"
-                    message: "{{ state_attr(repeat.item.e, 'friendly_name') }} was still on {{ repeat.item.m | int + 2 }} min after starting; stopped and aborted the cycle."
+                - variables:
+                    n_title: "Sprinklers: safety stop"
+                    n_msg: "{{ state_attr(repeat.item.e, 'friendly_name') }} was still on {{ repeat.item.m | int + 2 }} min after starting; stopped and aborted the cycle."
+                - if: "{{ notify_targets | count > 0 }}"
+                  then:
+                    - action: yardian_local.notify
+                      data:
+                        targets: "{{ notify_targets }}"
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                - if: "{{ notify_entities | count > 0 }}"
+                  then:
+                    - action: notify.send_message
+                      target: {entity_id: "{{ notify_entities }}"}
+                      data:
+                        title: "{{ n_title }}"
+                        message: "{{ n_msg }}"
+                      continue_on_error: true
             - stop: Zone overran
 
   - if: "{{ can_notify and 'finish' in notify_events }}"
     then:
-      - action: yardian_local.notify
-        data:
-          targets: "{{ notify_targets }}"
-          title: "Sprinklers: done"
-          message: "Watered {{ run_list | count }} zones ({{ run_list | sum(attribute='m') }} min)."
+      - variables:
+          n_title: "Sprinklers: done"
+          n_msg: "Watered {{ run_list | count }} zones ({{ run_list | sum(attribute='m') }} min)."
+      - if: "{{ notify_targets | count > 0 }}"
+        then:
+          - action: yardian_local.notify
+            data:
+              targets: "{{ notify_targets }}"
+              title: "{{ n_title }}"
+              message: "{{ n_msg }}"
+      - if: "{{ notify_entities | count > 0 }}"
+        then:
+          - action: notify.send_message
+            target: {entity_id: "{{ notify_entities }}"}
+            data:
+              title: "{{ n_title }}"
+              message: "{{ n_msg }}"
+            continue_on_error: true
