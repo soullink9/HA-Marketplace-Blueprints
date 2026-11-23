@@ -1,8 +1,8 @@
-# HA-Marketplace-Blueprints v0.5.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.8.1 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Adaptive Lights – Automatic Room Lighting · v0.5.0
+  name: Adaptive Lights – Automatic Room Lighting · v0.8.1
   description: >
-    **Version 0.5.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.8.1** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
     Turns a room's lights on and off with presence sensors or a schedule,
@@ -76,6 +76,20 @@ blueprint:
               max: 60
               mode: slider
               unit_of_measurement: minutes
+
+        ignore_after_off_seconds:
+          name: Wait before turning back on after turning off
+          description: >-
+            Some cameras and sensors see the lights going off as motion. If
+            someone is still there after this wait, the lights come back on.
+            0 = no wait.
+          default: 15
+          selector:
+            number:
+              min: 0
+              max: 120
+              mode: slider
+              unit_of_measurement: seconds
 
         ambient_off_ignores_presence:
           name: Turn off when the schedule ends, even if someone is there
@@ -627,6 +641,7 @@ variables:
 
   presence_sensors_var: !input presence_sensors
   presence_off_delay_var: !input presence_off_delay
+  ignore_after_off_seconds_var: !input ignore_after_off_seconds
 
   control_mode: !input control_mode
   preset_choice: !input preset_choice
@@ -907,6 +922,36 @@ variables:
     {% endfor %}
     {{ ns.found }}
 
+  # ---------------------------------------------------------------------------
+  # WAIT AFTER OUR OWN TURN-OFF — some sensors (camera motion detection in
+  # particular) report motion when the lights go off, which turned the
+  # lights straight back on. For a few seconds after this automation (not a
+  # person) turned the lights off, presence ON waits and re-checks, and the
+  # re-check doesn't force them on. Returns the seconds still left (0 = none).
+  # Manual offs are left to the "Manual changes" settings.
+  # ---------------------------------------------------------------------------
+  auto_off_wait_left: >
+    {% set ns = namespace(left=0) %}
+    {% set grace = ignore_after_off_seconds_var | int(0) %}
+    {% if control_mode == 'presence' and grace > 0 %}
+      {% for eid in light_ids %}
+        {% set st = states[eid] %}
+        {% if st and st.state == 'off' %}
+          {% set lc = as_local(st.last_changed) %}
+          {% set from_our_clock = lc.second < 10
+               and ((self_healing_enabled_var and lc.minute % 5 == 0)
+                    or lc.strftime('%H:%M') in clock_trigger_minutes) %}
+          {% set is_manual = (st.context.user_id is not none)
+               or (st.context.parent_id is none and not from_our_clock) %}
+          {% set left = grace - (now() - st.last_changed).total_seconds() %}
+          {% if not is_manual and left > ns.left %}
+            {% set ns.left = left %}
+          {% endif %}
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    {{ ns.left | round(1) }}
+
   history_blocks_on_var: >-
     {{ enable_manual_override_var
        and any_manual_off_var
@@ -951,6 +996,7 @@ actions:
             preset_on={{ preset_on }} preset_off={{ preset_off }}
             presence_configured={{ presence_configured }} presence_active={{ presence_active }}
             presence_off_and_delay_elapsed={{ presence_off_and_delay_elapsed }} ambient_off_ignores_presence={{ ambient_off_ignores_presence_var }}
+            auto_off_wait_left={{ auto_off_wait_left }}
             media_playing={{ media_playing }} off_block_active={{ off_block_active }}
             lux_ok={{ lux_ok }} lux_use_sun={{ lux_use_sun }} lux_value={{ lux_value }}
             lux_keep_on_active={{ lux_keep_on_active }}
@@ -976,6 +1022,23 @@ actions:
                 value_template: "{{ any_on | bool }}"
             then:
               - stop: Already on - circadian updates for lights that are on are handled by the recompute/self-healing path.
+          # Just turned off by us: this "presence" may be the sensor reacting
+          # to the lights going off. Wait out the rest of the grace period,
+          # then turn on only if someone is still there and nothing else
+          # turned the lights on in the meantime.
+          - if:
+              - condition: template
+                value_template: "{{ auto_off_wait_left | float(0) > 0 }}"
+            then:
+              - delay:
+                  seconds: "{{ auto_off_wait_left | float(0) }}"
+              - if:
+                  - condition: template
+                    value_template: >-
+                      {{ expand(presence_sensors_var) | selectattr('state','eq','on') | list | length == 0
+                         or light_ids | select('is_state', 'on') | list | count > 0 }}
+                then:
+                  - stop: Presence cleared during the wait after turning off (likely the sensor reacting to the lights), or a light is already on.
           - if:
               - condition: template
                 value_template: "{{ use_circadian }}"
@@ -1047,7 +1110,8 @@ actions:
                 {{ (preset_on | bool) and (all_off | bool)
                    and (not presence_configured or presence_active)
                    and not manual_override_blocks_on_var
-                   and not media_playing }}
+                   and not media_playing
+                   and auto_off_wait_left | float(0) == 0 }}
               should_force_off: >-
                 {{ (preset_off | bool) and (any_on | bool)
                    and (not presence_configured or ambient_off_ignores_presence_var or presence_off_and_delay_elapsed)

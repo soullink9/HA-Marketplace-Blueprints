@@ -4,6 +4,18 @@ Each release has a repo version (the git tag). A blueprint's own version
 only changes in releases that change that blueprint, so it shows the
 release it last changed in.
 
+## 0.8.1
+
+### Adaptive Lights (v0.8.1)
+
+- Lights no longer turn straight back on after turning off when nobody is
+  there. Some cameras and sensors see the lights going off as motion. New
+  setting under Presence: **Wait before turning back on after turning
+  off** (default 15 seconds). After the automation turns the lights off,
+  new presence waits until this ends, and the lights only come back on if
+  someone is still there. The 5-minute re-check waits too. Turning lights
+  off by hand works as before.
+
 ## 0.8.0
 
 Safety fixes from a security review.
