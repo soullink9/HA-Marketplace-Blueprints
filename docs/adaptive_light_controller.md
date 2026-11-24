@@ -59,16 +59,6 @@ like this). The automation's own timed runs look the same, so a change in
 the first 10 seconds of a 5-minute mark, or of one of your set times, is
 treated as the automation's own.
 
-## Lights turning straight back on after turning off
-
-Some cameras and motion sensors see the lights going off as motion. After
-the automation turns the lights off, **Wait before turning back on after
-turning off** (under Presence, default 15 seconds) holds off: if someone is
-still there when it ends, the lights come back on, otherwise they stay off.
-If they still come back on, raise it a little, or leave a camera's motion
-sensor out of the presence sensors. Turning lights off by hand isn't
-affected; that's what **Manual changes** is for.
-
 ## Troubleshooting
 
 Turn on **Debug logging** under Advanced. Each run writes one line to

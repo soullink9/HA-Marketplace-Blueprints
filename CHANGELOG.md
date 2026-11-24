@@ -4,6 +4,14 @@ Each release has a repo version (the git tag). A blueprint's own version
 only changes in releases that change that blueprint, so it shows the
 release it last changed in.
 
+## 0.8.2
+
+### Adaptive Lights (v0.8.2)
+
+- Undoes the 0.8.1 change. **Wait before turning back on after turning
+  off** is removed, and presence turns the lights on straight away again,
+  as in 0.8.0.
+
 ## 0.8.1
 
 ### Adaptive Lights (v0.8.1)
