@@ -1,8 +1,8 @@
-# HA-Marketplace-Blueprints v0.8.2 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.9.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Adaptive Lights – Automatic Room Lighting · v0.8.2
+  name: Adaptive Lights – Automatic Room Lighting · v0.9.0
   description: >
-    **Version 0.8.2** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.9.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
     Turns a room's lights on and off with presence sensors or a schedule,
@@ -108,6 +108,8 @@ blueprint:
                 value: lux_only
               - label: When the sun is down and the room is dark
                 value: sun_and_lux
+              - label: Between set times, once it's dark (light sensor)
+                value: time_and_lux
               - label: Between set times, or when the sun is down and the room is dark
                 value: time_or_sun_and_lux
               - label: Between set times, when the sun is down, or when the room is dark
@@ -120,6 +122,7 @@ blueprint:
             operator: in
             value:
             - time_only
+            - time_and_lux
             - time_or_sun_and_lux
             - or
           default: "18:00:00"
@@ -129,12 +132,14 @@ blueprint:
         off_time:
           name: Until
           description: >-
-            Can be after midnight, for example 18:00 until 06:00.
+            Lights turn off at this time and stay off until "From". Can be
+            after midnight, for example 18:00 until 06:00.
           visible:
             field: preset_choice
             operator: in
             value:
             - time_only
+            - time_and_lux
             - time_or_sun_and_lux
             - or
           default: "23:00:00"
@@ -170,6 +175,7 @@ blueprint:
             value:
             - lux_only
             - sun_and_lux
+            - time_and_lux
             - time_or_sun_and_lux
             - or
           default: []
@@ -188,6 +194,7 @@ blueprint:
             value:
             - lux_only
             - sun_and_lux
+            - time_and_lux
             - time_or_sun_and_lux
             - or
           default: 50
@@ -207,6 +214,7 @@ blueprint:
             value:
             - lux_only
             - sun_and_lux
+            - time_and_lux
             - time_or_sun_and_lux
             - or
           default: 80
@@ -226,6 +234,7 @@ blueprint:
             value:
             - lux_only
             - sun_and_lux
+            - time_and_lux
             - time_or_sun_and_lux
             - or
           default: 0
@@ -246,6 +255,7 @@ blueprint:
             value:
             - lux_only
             - sun_and_lux
+            - time_and_lux
             - time_or_sun_and_lux
             - or
           default: 30
@@ -264,6 +274,7 @@ blueprint:
             value:
             - lux_only
             - sun_and_lux
+            - time_and_lux
             - time_or_sun_and_lux
             - or
           default: true
@@ -631,7 +642,7 @@ variables:
   control_mode: !input control_mode
   preset_choice: !input preset_choice
   # The preset alone decides which of time, sun and light sensor count.
-  time_window_enabled: "{{ preset_choice in ['time_only', 'time_or_sun_and_lux', 'or'] }}"
+  time_window_enabled: "{{ preset_choice in ['time_only', 'time_and_lux', 'time_or_sun_and_lux', 'or'] }}"
   on_time: !input on_time
   off_time: !input off_time
   on_str: "{{ on_time ~ ':00' if (on_time | length == 5) else on_time }}"
@@ -640,7 +651,7 @@ variables:
   solar_enabled: "{{ preset_choice in ['sun_only', 'sun_and_lux', 'time_or_sun_and_lux', 'or'] }}"
   solar_threshold: !input solar_elevation_threshold
 
-  lux_enabled: "{{ preset_choice in ['lux_only', 'sun_and_lux', 'time_or_sun_and_lux', 'or'] }}"
+  lux_enabled: "{{ preset_choice in ['lux_only', 'sun_and_lux', 'time_and_lux', 'time_or_sun_and_lux', 'or'] }}"
   lux_sensor_list: !input lux_sensor
   lux_sensor: "{{ (lux_sensor_list | first) if lux_sensor_list else none }}"
   lux_on_threshold: !input lux_on_threshold
@@ -744,10 +755,12 @@ variables:
     {% elif lux_use_sun %} {{ sun_elev <= solar_threshold }}
     {% else %} {{ lux_value <= lux_on_threshold }}
     {% endif %}
+  # "Bright" never overlaps "dark", even if "Bright above" is set at or
+  # below "Dark below".
   lux_wants_off: >
     {% if not lux_enabled %} {{ false }}
     {% elif lux_use_sun %} {{ sun_elev > solar_threshold }}
-    {% else %} {{ lux_value >= lux_off_threshold }}
+    {% else %} {{ lux_value > lux_on_threshold and lux_value >= lux_off_threshold }}
     {% endif %}
 
   preset_on: >
@@ -759,19 +772,31 @@ variables:
       (p == 'sun_only' and sun_wants_on) or
       (p == 'or' and (time_wants_on or lux_wants_on or sun_wants_on)) or
       (p == 'sun_and_lux' and (sun_wants_on and lux_wants_on)) or
+      (p == 'time_and_lux' and (time_wants_on and lux_wants_on)) or
       (p == 'time_or_sun_and_lux' and (time_wants_on or (sun_wants_on and lux_wants_on)))
     ) | bool }}
 
-  preset_off: >
+  # "Off" is the opposite of the preset's "on" rule: for an "or" preset every
+  # part must say off, for an "and" preset one part is enough. Before 0.9.0
+  # the "or" presets turned off as soon as one part said off, so at the end
+  # time on a dark evening they asked for on and off at once and the
+  # 5-minute re-check toggled the lights every 5 minutes.
+  preset_off_rule: >
     {% set p = preset_choice %}
     {{ (
       (p == 'time_only' and time_wants_off) or
       (p == 'lux_only' and lux_wants_off) or
       (p == 'sun_only' and sun_wants_off) or
-      (p == 'or' and (time_wants_off or lux_wants_off or sun_wants_off)) or
+      (p == 'or' and (time_wants_off and lux_wants_off and sun_wants_off)) or
       (p == 'sun_and_lux' and (sun_wants_off and lux_wants_off)) or
-      (p == 'time_or_sun_and_lux' and (time_wants_off or (sun_wants_off and lux_wants_off)))
+      (p == 'time_and_lux' and (time_wants_off or lux_wants_off)) or
+      (p == 'time_or_sun_and_lux' and (time_wants_off and (sun_wants_off or lux_wants_off)))
     ) | bool }}
+
+  # Safeguard against toggling: the schedule never asks for off while it
+  # also asks for on, whatever the settings. Without this, any overlap makes
+  # every run undo the last one.
+  preset_off: "{{ (preset_off_rule | bool) and not (preset_on | bool) }}"
 
   # ---------------------------------------------------------------------------
   # CIRCADIAN BRIGHTNESS / COLOR
@@ -948,7 +973,7 @@ actions:
             [Adaptive Light Controller]
             trigger_id={{ trigger.id if trigger.id is defined else 'none' }}
             light_ids={{ light_ids }} any_on={{ any_on }} all_off={{ all_off }}
-            preset_on={{ preset_on }} preset_off={{ preset_off }}
+            preset_on={{ preset_on }} preset_off={{ preset_off }} preset_off_rule={{ preset_off_rule }}
             presence_configured={{ presence_configured }} presence_active={{ presence_active }}
             presence_off_and_delay_elapsed={{ presence_off_and_delay_elapsed }} ambient_off_ignores_presence={{ ambient_off_ignores_presence_var }}
             media_playing={{ media_playing }} off_block_active={{ off_block_active }}

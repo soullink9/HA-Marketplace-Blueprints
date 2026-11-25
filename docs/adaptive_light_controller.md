@@ -21,6 +21,7 @@ for your answers are shown.
 | When the sun is down | Sun counts as down below |
 | When the room is dark (light sensor) | Light sensor settings |
 | When the sun is down and the room is dark | Sun and light sensor settings |
+| Between set times, once it's dark (light sensor) | From, Until, light sensor settings |
 | Between set times, or when the sun is down and the room is dark | All three |
 | Between set times, when the sun is down, or when the room is dark | All three |
 
@@ -32,6 +33,11 @@ That's a working setup. Everything below is optional and collapsed.
 - **Living room in the evening:** presence sensors, "When the sun is down".
 - **Porch light:** schedule only, "When the sun is down".
 - **Night light:** schedule only, "Between set times".
+- **Yard or string lights, on at dusk and off at bedtime:** schedule only,
+  "Between set times, once it's dark". Set **From** to the earliest time
+  they may come on (for example 16:00) and **Until** to bedtime (for
+  example 22:00). They come on when it gets dark after From, go off at
+  Until, and stay off until From the next day.
 
 ## Optional sections
 
@@ -44,6 +50,17 @@ That's a working setup. Everything below is optional and collapsed.
   on or off while certain sensors are on (for example "in bed"), or never
   turn off during set hours.
 - **Advanced:** the 5-minute re-check and debug logging.
+
+## Rules with "or"
+
+"Or" rules keep the lights on while any part says on. With "Between set
+times, or when the sun is down and the room is dark", lights stay on after
+Until for as long as it's dark, so they're on all night. For lights that
+should go off at a set time even in the dark, use "Between set times, once
+it's dark".
+
+The automation never asks for on and off at the same time, so it can't
+toggle the lights back and forth, whatever the settings.
 
 ## When the light sensor goes offline
 

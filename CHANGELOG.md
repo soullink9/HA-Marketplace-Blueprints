@@ -4,6 +4,26 @@ Each release has a repo version (the git tag). A blueprint's own version
 only changes in releases that change that blueprint, so it shows the
 release it last changed in.
 
+## 0.9.0
+
+### Adaptive Lights (v0.9.0)
+
+- Fixed lights turning on and off every 5 minutes after the end time. With
+  "Between set times, or when the sun is down and the room is dark" (and
+  "Between set times, when the sun is down, or when the room is dark"),
+  on a dark evening the end time said off while the dark said on, so each
+  5-minute re-check undid the last one. These rules now keep the lights on
+  while any part says on, and turn them off only once every part says off.
+- New safeguard: the automation never asks for on and off at the same
+  time, whatever the settings, so it can't toggle the lights back and
+  forth. "Bright above" set at or below "Dark below" no longer counts as
+  both dark and bright.
+- New rule **Between set times, once it's dark (light sensor)**: for
+  example on at dusk, off at 22:00. Lights come on when it gets dark after
+  From, go off at Until, and stay off until From the next day. If the
+  light sensor is offline, the sun is used instead (when that setting is
+  on).
+
 ## 0.8.2
 
 ### Adaptive Lights (v0.8.2)
