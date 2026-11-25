@@ -4,6 +4,23 @@ Each release has a repo version (the git tag). A blueprint's own version
 only changes in releases that change that blueprint, so it shows the
 release it last changed in.
 
+## 0.9.1
+
+### Adaptive Lights (v0.9.1)
+
+- At the end of **Never turn off during set hours**, schedule-only lights
+  now turn off only if the schedule says off. Before, they turned off and
+  then came back on at the next 5-minute re-check.
+- Unchecked **Days** now only stop the lights turning on. Turning off
+  still works, so lights on from the night before are no longer left on
+  all through an unchecked day.
+- A restart no longer looks like someone switching the lights by hand.
+  Light changes in the first 5 minutes after Home Assistant starts (or
+  automations reload) don't start the manual-change pause.
+- A light reading must stay dark or bright for 2 minutes before it
+  switches the lights. **Bright above** is always treated as at least
+  1.5 × **Dark below**, so a passing cloud doesn't flicker the lights.
+
 ## 0.9.0
 
 ### Adaptive Lights (v0.9.0)

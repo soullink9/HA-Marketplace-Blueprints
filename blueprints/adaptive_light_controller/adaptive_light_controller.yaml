@@ -1,8 +1,8 @@
-# HA-Marketplace-Blueprints v0.9.0 - https://github.com/soullink9/HA-Marketplace-Blueprints
+# HA-Marketplace-Blueprints v0.9.1 - https://github.com/soullink9/HA-Marketplace-Blueprints
 blueprint:
-  name: Adaptive Lights – Automatic Room Lighting · v0.9.0
+  name: Adaptive Lights – Automatic Room Lighting · v0.9.1
   description: >
-    **Version 0.9.0** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
+    **Version 0.9.1** · [What's new](https://github.com/soullink9/HA-Marketplace-Blueprints/blob/main/CHANGELOG.md)
 
 
     Turns a room's lights on and off with presence sensors or a schedule,
@@ -207,7 +207,8 @@ blueprint:
         lux_off_threshold:
           name: Bright above
           description: >-
-            Keep this above "Dark below" so the lights don't flicker.
+            Always at least 1.5 × "Dark below", so the lights don't flicker
+            when a cloud passes.
           visible:
             field: preset_choice
             operator: in
@@ -284,7 +285,8 @@ blueprint:
         active_days:
           name: Days
           description: >-
-            The automation does nothing on unchecked days.
+            Lights don't turn on on unchecked days. They still turn off, so
+            lights left on from the night before go off.
           default:
           - Sunday
           - Monday
@@ -521,6 +523,8 @@ blueprint:
           name: Until
           description: >-
             At this time the lights turn off if nothing else keeps them on.
+            With a schedule only, they turn off only if the schedule says
+            off.
           visible:
             field: enable_off_block_window
             value: true
@@ -578,14 +582,20 @@ triggers:
     above: !input solar_elevation_threshold
     id: ambient_recompute
 
+  # A reading must hold for 2 minutes, so a passing cloud or a noisy
+  # sensor doesn't switch the lights.
   - trigger: numeric_state
     entity_id: !input lux_sensor
     below: !input lux_on_threshold
+    for:
+      minutes: 2
     id: ambient_recompute
 
   - trigger: numeric_state
     entity_id: !input lux_sensor
     above: !input lux_off_threshold
+    for:
+      minutes: 2
     id: ambient_recompute
 
   - trigger: time
@@ -617,16 +627,6 @@ triggers:
     id: off_block_window_end
 
 ###############################################################################
-# CONDITIONS (apply to every trigger)
-###############################################################################
-conditions:
-  - condition: template
-    value_template: >
-      {% set today = now().strftime('%A').lower() %}
-      {% set days = active_days_var | map('lower') | list %}
-      {{ today in days }}
-
-###############################################################################
 # VARIABLES
 ###############################################################################
 variables:
@@ -656,6 +656,8 @@ variables:
   lux_sensor: "{{ (lux_sensor_list | first) if lux_sensor_list else none }}"
   lux_on_threshold: !input lux_on_threshold
   lux_off_threshold: !input lux_off_threshold
+  # Enforced gap between dark and bright, whatever "Bright above" is set to.
+  lux_bright_at: "{{ [lux_off_threshold | float(0), lux_on_threshold | float(0) * 1.5] | max }}"
   lux_stale_minutes: !input lux_stale_minutes
   lux_fallback_to_sun: !input lux_fallback_to_sun
 
@@ -684,6 +686,9 @@ variables:
   block_auto_off_entities_var: !input block_auto_off_entities
 
   now_str: "{{ now().strftime('%H:%M:%S') }}"
+  # Days only limit turning on (and fading). Turning off always works, so a
+  # window that runs past midnight into an unchecked day still ends.
+  day_active: "{{ now().strftime('%A') | lower in (active_days_var | map('lower') | list) }}"
 
   # ---------------------------------------------------------------------------
   # LIGHT ID EXTRACTION — expands entity_id/device_id/area_id from the
@@ -755,12 +760,11 @@ variables:
     {% elif lux_use_sun %} {{ sun_elev <= solar_threshold }}
     {% else %} {{ lux_value <= lux_on_threshold }}
     {% endif %}
-  # "Bright" never overlaps "dark", even if "Bright above" is set at or
-  # below "Dark below".
+  # "Bright" never overlaps "dark" and is always at least 1.5 × "Dark below".
   lux_wants_off: >
     {% if not lux_enabled %} {{ false }}
     {% elif lux_use_sun %} {{ sun_elev > solar_threshold }}
-    {% else %} {{ lux_value > lux_on_threshold and lux_value >= lux_off_threshold }}
+    {% else %} {{ lux_value > lux_on_threshold and lux_value >= lux_bright_at }}
     {% endif %}
 
   preset_on: >
@@ -885,6 +889,15 @@ variables:
   # seconds of those minutes is treated as ours. A real switch press only
   # collides with that window about 3% of the time.
   # ---------------------------------------------------------------------------
+  # After a restart (or a reload of automations) every light gets a fresh
+  # state with no parent context, which looked like a manual change and
+  # started the pause. This automation's own state is rewritten at the same
+  # moment, so light changes within 5 minutes of it are not counted as
+  # manual. A real switch press in those 5 minutes is missed. Kept as text
+  # here, because a variable can't hold a datetime; parsed where it's used.
+  started_at: >-
+    {{ (this.last_changed | string)
+       if this is defined and this and this.last_changed is defined else '' }}
   clock_trigger_minutes: >
     {% set ns = namespace(m=[]) %}
     {% set times = ([on_time, off_time] if time_window_enabled else [])
@@ -903,8 +916,11 @@ variables:
         {% set from_our_clock = lc.second < 10
              and ((self_healing_enabled_var and lc.minute % 5 == 0)
                   or lc.strftime('%H:%M') in clock_trigger_minutes) %}
+        {% set started = as_datetime(started_at, none) if started_at else none %}
+        {% set from_startup = started is not none
+             and ((lc - started).total_seconds() | abs) < 300 %}
         {% set is_manual = (st.context.user_id is not none)
-             or (st.context.parent_id is none and not from_our_clock) %}
+             or (st.context.parent_id is none and not from_our_clock and not from_startup) %}
         {% set age = (now() - st.last_changed).total_seconds() %}
         {% if is_manual and age < (override_duration_minutes_var * 60) %}
           {% set ns.found = true %}
@@ -922,8 +938,11 @@ variables:
         {% set from_our_clock = lc.second < 10
              and ((self_healing_enabled_var and lc.minute % 5 == 0)
                   or lc.strftime('%H:%M') in clock_trigger_minutes) %}
+        {% set started = as_datetime(started_at, none) if started_at else none %}
+        {% set from_startup = started is not none
+             and ((lc - started).total_seconds() | abs) < 300 %}
         {% set is_manual = (st.context.user_id is not none)
-             or (st.context.parent_id is none and not from_our_clock) %}
+             or (st.context.parent_id is none and not from_our_clock and not from_startup) %}
         {% set age = (now() - st.last_changed).total_seconds() %}
         {% if is_manual and age < (override_duration_minutes_var * 60) %}
           {% set ns.found = true %}
@@ -974,6 +993,7 @@ actions:
             trigger_id={{ trigger.id if trigger.id is defined else 'none' }}
             light_ids={{ light_ids }} any_on={{ any_on }} all_off={{ all_off }}
             preset_on={{ preset_on }} preset_off={{ preset_off }} preset_off_rule={{ preset_off_rule }}
+            day_active={{ day_active }} started_at={{ started_at }} lux_bright_at={{ lux_bright_at }}
             presence_configured={{ presence_configured }} presence_active={{ presence_active }}
             presence_off_and_delay_elapsed={{ presence_off_and_delay_elapsed }} ambient_off_ignores_presence={{ ambient_off_ignores_presence_var }}
             media_playing={{ media_playing }} off_block_active={{ off_block_active }}
@@ -993,9 +1013,9 @@ actions:
         sequence:
           - if:
               - condition: template
-                value_template: "{{ media_playing or manual_override_blocks_on_var or not (preset_on | bool) }}"
+                value_template: "{{ not (day_active | bool) or media_playing or manual_override_blocks_on_var or not (preset_on | bool) }}"
             then:
-              - stop: Blocked by media guard, manual override / block entity, or ambient conditions.
+              - stop: Blocked by an unchecked day, media guard, manual override / block entity, or ambient conditions.
           - if:
               - condition: template
                 value_template: "{{ any_on | bool }}"
@@ -1050,6 +1070,7 @@ actions:
                 value_template: >
                   {{ not enable_off_block_window_var or media_playing or manual_override_blocks_off_var
                      or lux_keep_on_active
+                     or (not presence_configured and not (preset_off | bool))
                      or (expand(presence_sensors_var) | selectattr('state','eq','on') | list | length > 0) }}
             then:
               - stop: Nothing to do at end of off-block window.
@@ -1069,7 +1090,7 @@ actions:
         sequence:
           - variables:
               should_force_on: >-
-                {{ (preset_on | bool) and (all_off | bool)
+                {{ (day_active | bool) and (preset_on | bool) and (all_off | bool)
                    and (not presence_configured or presence_active)
                    and not manual_override_blocks_on_var
                    and not media_playing }}
@@ -1079,7 +1100,7 @@ actions:
                    and not manual_override_blocks_off_var
                    and not media_playing and not off_block_active and not lux_keep_on_active }}
               should_refresh_circadian: >-
-                {{ (use_circadian | bool)
+                {{ (day_active | bool) and (use_circadian | bool)
                    and (lights_needing_circadian_update | length > 0)
                    and not media_playing
                    and not (history_blocks_off_var | bool) }}

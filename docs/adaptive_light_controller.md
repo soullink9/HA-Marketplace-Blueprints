@@ -62,6 +62,13 @@ it's dark".
 The automation never asks for on and off at the same time, so it can't
 toggle the lights back and forth, whatever the settings.
 
+A light reading must stay dark or bright for 2 minutes before it switches
+the lights, and "Bright above" is always at least 1.5 × "Dark below", so a
+passing cloud doesn't flicker them.
+
+Unchecked **Days** only stop the lights turning on. They still turn off,
+so a window that runs past midnight into an unchecked day still ends.
+
 ## When the light sensor goes offline
 
 Home Assistant keeps showing a sensor's last value after it stops
@@ -75,6 +82,10 @@ A change with no automation behind it looks manual (physical switches look
 like this). The automation's own timed runs look the same, so a change in
 the first 10 seconds of a 5-minute mark, or of one of your set times, is
 treated as the automation's own.
+
+After a restart, every light looks freshly changed. Changes in the first 5
+minutes after Home Assistant starts (or automations reload) aren't counted
+as manual, so a restart doesn't start the pause.
 
 ## Troubleshooting
 
